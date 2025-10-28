@@ -1,2 +1,44 @@
+# === Haskell Stack project ===
+
+# Build directories
 .stack-work/
-*~
+dist/
+dist-newstyle/
+
+# Compiled files
+*.hi
+*.o
+*.exe
+*.dll
+*.so
+*.dyn_o
+*.dyn_hi
+
+# Stack local files
+.stack/
+.stack2/
+.stack*.sqlite3*
+.stack*.lock
+
+# Cabal build
+cabal-dev/
+cabal.project.local
+
+# VSCode / editor
+.vscode/
+*.code-workspace
+*.swp
+*.bak
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# others
+CHANGELOG.md
+my-project.cabal
+Setup.hs
+stack.yaml.lock
+Spec.hs
+.ghc.environment.x86_64-mingw32-9.6.7
