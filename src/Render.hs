@@ -1,46 +1,74 @@
-module Render (renderGame) where
+module Render (drawGame) where
 
+import Graphics.Gloss
 import Types
-import System.Console.ANSI
-import Control.Monad (forM_)
 
-renderGame :: GameState -> IO ()
-renderGame gs = do
-  clearScreen
-  setCursorPosition 0 0
-  putStrLn "==== 🧨 BOMBERMAN HASKELL 🧨 ====\n"
-  renderBoard (board gs) (players gs) (bombs gs)
-  putStrLn $ "\nTick: " ++ show (tick gs)
+-- Kích thước một ô (pixel)
+cellSize :: Float
+cellSize = 40
 
-------------------------------------------------------------
--- Vẽ bản đồ
-------------------------------------------------------------
-renderBoard :: Board -> [Player] -> [Bomb] -> IO ()
-renderBoard b ps bs = do
-  forM_ (zip [0..] b) $ \(y, row) -> do
-    forM_ (zip [0..] row) $ \(x, cell) -> do
-      let pHere = findPlayer (x, y) ps
-          bHere = findBomb (x, y) bs
-      case (pHere, bHere, cell) of
-        (Just p, _, _) -> renderPlayer p
-        (_, Just _, _) -> renderBomb
-        _              -> renderCell cell
-    putStrLn ""
+-- Chuyển tọa độ (ô lưới x,y) → toạ độ vẽ Gloss (px,py)
+-- Quy ước logic:
+--   (0,0) = ô góc TRÊN-TRÁI của board
+-- Gloss:
+--   (0,0) = giữa màn hình, y tăng lên
+gridToScreen
+  :: Board
+  -> (Int, Int)   -- (x,y) trong lưới
+  -> (Float,Float)
+gridToScreen b (gx, gy) =
+  ( x0 + fromIntegral gx * cellSize + half
+  , y0 - fromIntegral gy * cellSize - half
+  )
+  where
+    w  = length (head b)
+    h  = length b
+    wPix = fromIntegral w * cellSize
+    hPix = fromIntegral h * cellSize
+    x0 = - wPix / 2
+    y0 =   hPix / 2
+    half = cellSize / 2
 
-------------------------------------------------------------
--- Các hàm phụ
-------------------------------------------------------------
-findPlayer (x, y) = foldr (\p acc -> if pos p == (x, y) then Just p else acc) Nothing
-findBomb (x, y) = foldr (\b acc -> if bPos b == (x, y) then Just b else acc) Nothing
+-- Vẽ toàn bộ game
+drawGame :: GameState -> IO Picture
+drawGame gs = pure $
+  Pictures
+    [ drawBoard (board gs)
+    , drawBombs (board gs) (bombs gs)
+    , drawPlayer (board gs) (player gs)
+    ]
 
-renderCell Wall = setSGR [SetColor Foreground Vivid Blue] >> putStr "██"
-renderCell SoftBlock = setSGR [SetColor Foreground Dull Yellow] >> putStr "▒▒"
-renderCell Empty = setSGR [Reset] >> putStr "  "
-renderCell Flame = setSGR [SetColor Foreground Vivid Red] >> putStr "🔥"
+-- Vẽ nền + ô
+drawBoard :: Board -> Picture
+drawBoard b =
+  Pictures [ drawCell b (x,y) c
+           | (y,row) <- zip [0..] b
+           , (x,c)   <- zip [0..] row
+           ]
 
-renderPlayer p =
-  case pType p of
-    Human -> setSGR [SetColor Foreground Vivid Green] >> putStr "😀"
-    AI    -> setSGR [SetColor Foreground Vivid Magenta] >> putStr "🤖"
+drawCell :: Board -> (Int,Int) -> Cell -> Picture
+drawCell b (gx,gy) c =
+  let (sx, sy) = gridToScreen b (gx,gy)
+      tile col = translate sx sy $ color col (rectangleSolid cellSize cellSize)
+  in case c of
+      Wall      -> tile (greyN 0.2)
+      SoftBlock -> tile (greyN 0.5)
+      Empty     -> tile (greyN 0.85)
+      Flame     -> tile red
 
-renderBomb = setSGR [SetColor Foreground Vivid Red] >> putStr "💣"
+-- Vẽ người chơi ở đúng ô
+drawPlayer :: Board -> Player -> Picture
+drawPlayer b p =
+  let (gx,gy) = pos p
+      (sx,sy) = gridToScreen b (gx,gy)
+  in translate sx sy $
+        color blue (circleSolid (cellSize * 0.35))
+
+-- Vẽ bom
+drawBombs :: Board -> [Bomb] -> Picture
+drawBombs b bs =
+  Pictures [ let (sx,sy) = gridToScreen b (bPos bomb)
+             in translate sx sy $
+                  color black (circleSolid (cellSize * 0.25))
+           | bomb <- bs
+           ]

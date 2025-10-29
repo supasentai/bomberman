@@ -1,8 +1,5 @@
 module Types where
 
-------------------------------------------------------------
--- Cấu trúc dữ liệu chính
-------------------------------------------------------------
 data Cell
   = Wall
   | SoftBlock
@@ -12,26 +9,21 @@ data Cell
 
 type Board = [[Cell]]
 
-data PlayerType = Human | AI
-  deriving (Eq, Show)
-
 data Player = Player
-  { pid   :: Int
-  , pos   :: (Int, Int)
-  , pType :: PlayerType
-  , hp    :: Int
+  { pid :: Int
+  , pos :: (Int, Int)
+  , alive :: Bool
   } deriving (Eq, Show)
 
 data Bomb = Bomb
   { owner :: Int
   , bPos  :: (Int, Int)
-  , timer :: Int
-  , power :: Int
+  , timer :: Float
   } deriving (Eq, Show)
 
 data GameState = GameState
   { board   :: Board
-  , players :: [Player]
+  , player  :: Player
   , bombs   :: [Bomb]
-  , tick    :: Int
+  , tick    :: Float
   } deriving (Eq, Show)
