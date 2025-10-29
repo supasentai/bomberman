@@ -1,62 +1,68 @@
 module GameLogic where
 
 import Types
-import Data.List (delete, nub)
+import Data.List (nub)
 
 ------------------------------------------------------------
--- 1️⃣ Di chuyển người chơi
+-- Kiểm tra có thể đi được (chưa dùng, để sẵn)
 ------------------------------------------------------------
--- Hàm movePlayer: nhận một người chơi + action → trả về player mới
-movePlayer :: Player -> Action -> Player
-movePlayer p action =
-  let (x, y) = pos p
-  in case action of
-      MoveUp    -> p { pos = (x, y - 1) }
-      MoveDown  -> p { pos = (x, y + 1) }
-      MoveLeft  -> p { pos = (x - 1, y) }
-      MoveRight -> p { pos = (x + 1, y) }
-      _         -> p  -- Idle hoặc PlaceBomb không di chuyển
+canMove :: Board -> (Int, Int) -> Bool
+canMove b (x, y)
+  | y < 0 || y >= length b         = False
+  | null b || x < 0 || x >= length (head b)  = False
+  | otherwise =
+      case (b !! y) !! x of
+        Empty -> True
+        Flame -> True
+        _     -> False
 
 ------------------------------------------------------------
--- 2️⃣ Đặt bom
+-- Cập nhật bom, flame, tick
 ------------------------------------------------------------
--- Khi người chơi chọn đặt bom → tạo một Bomb mới tại vị trí của player
-placeBomb :: Player -> [Bomb] -> [Bomb]
-placeBomb p bs =
-  let newBomb = Bomb { owner = pid p, bPos = pos p, timer = 3, power = 2 }
-  in nub (newBomb : bs)  -- tránh trùng bom tại cùng vị trí
-
-------------------------------------------------------------
--- 3️⃣ Cập nhật bom theo thời gian
-------------------------------------------------------------
--- Giảm timer cho từng quả bom mỗi tick
 tickBombs :: [Bomb] -> [Bomb]
 tickBombs = map (\b -> b { timer = timer b - 1 })
 
--- Trả về danh sách bom đã nổ (timer == 0)
 explodedBombs :: [Bomb] -> [Bomb]
-explodedBombs = filter (\b -> timer b <= 0)
+explodedBombs = filter ((<= 0) . timer)
 
-------------------------------------------------------------
--- 4️⃣ Xử lý vụ nổ
-------------------------------------------------------------
--- Lửa lan theo power (tạm thời chỉ 4 hướng)
-explodeBomb :: Bomb -> [Cell] -> [(Int, Int)]
-explodeBomb b _ =
+explodeBomb :: Bomb -> [(Int, Int)]
+explodeBomb b =
   let (x, y) = bPos b
       p = power b
-  in [(x + dx, y) | dx <- [-p..p]] ++ [(x, y + dy) | dy <- [-p..p]]
+  in nub $
+      [(x, y)] ++
+      [(x + dx, y) | dx <- [-p..p], dx /= 0] ++
+      [(x, y + dy) | dy <- [-p..p], dy /= 0]
 
 ------------------------------------------------------------
--- 5️⃣ Cập nhật GameState mỗi tick
+-- Cập nhật game mỗi tick
 ------------------------------------------------------------
 updateGame :: GameState -> GameState
 updateGame gs =
-  let bsTicked = tickBombs (bombs gs)
-      expBombs = explodedBombs bsTicked
-      flames   = concatMap (`explodeBomb` concat (board gs)) expBombs
-      -- loại bỏ bom đã nổ
-      remainingBombs = filter (\b -> timer b > 0) bsTicked
-  in gs { bombs = remainingBombs
-        , tick  = tick gs + 1
-        }
+  let bs1 = tickBombs (bombs gs)
+      expBombs = explodedBombs bs1
+      flames = concatMap explodeBomb expBombs
+      nb = applyFlames (board gs) flames
+      remain = filter ((>0) . timer) bs1
+  in gs { board = nb, bombs = remain, tick = tick gs + 1 }
+
+------------------------------------------------------------
+-- Tạo lửa và làm nguội
+------------------------------------------------------------
+applyFlames :: Board -> [(Int, Int)] -> Board
+applyFlames b cs =
+  [ [ cellUpdate x y c | (x, c) <- zip [0..] row ]
+  | (y, row) <- zip [0..] b
+  ]
+  where
+    cellUpdate x y c
+      | (x, y) `elem` cs =
+          case c of
+            SoftBlock -> Flame
+            Empty     -> Flame
+            _         -> c
+      | otherwise = decayFlame c
+
+decayFlame :: Cell -> Cell
+decayFlame Flame = Empty
+decayFlame c     = c
