@@ -1,29 +1,61 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 module Types where
 
+import GHC.Generics (Generic)
+import Data.Aeson (ToJSON, FromJSON)
+
+------------------------------------------------------------
+-- | Ô trong bản đồ (Map Cell)
+------------------------------------------------------------
 data Cell
-  = Wall
-  | SoftBlock
-  | Empty
-  | Flame
-  deriving (Eq, Show)
+  = Wall        -- tường cứng
+  | SoftBlock   -- tường mềm phá được
+  | Empty       -- ô trống
+  | Flame       -- ô có lửa (sau khi bom nổ)
+  deriving (Show, Eq, Generic)
 
-type Board = [[Cell]]
+instance ToJSON Cell
+instance FromJSON Cell
 
+------------------------------------------------------------
+-- | Người chơi
+------------------------------------------------------------
 data Player = Player
-  { pid :: Int
-  , pos :: (Int, Int)
-  , alive :: Bool
-  } deriving (Eq, Show)
+  { pid   :: Int          -- ID người chơi
+  , pos   :: (Int, Int)   -- vị trí (x, y)
+  , alive :: Bool         -- còn sống?
+  } deriving (Show, Eq, Generic)
 
+instance ToJSON Player
+instance FromJSON Player
+
+------------------------------------------------------------
+-- | Bom
+------------------------------------------------------------
 data Bomb = Bomb
-  { owner :: Int
-  , bPos  :: (Int, Int)
-  , timer :: Float
-  } deriving (Eq, Show)
+  { owner :: Int          -- ID người đặt bom
+  , bPos  :: (Int, Int)   -- vị trí (x, y)
+  , timer :: Float        -- thời gian nổ (giây)
+  } deriving (Show, Eq, Generic)
 
+instance ToJSON Bomb
+instance FromJSON Bomb
+
+------------------------------------------------------------
+-- | Trạng thái tổng của game
+------------------------------------------------------------
 data GameState = GameState
-  { board   :: Board
-  , player  :: Player
-  , bombs   :: [Bomb]
-  , tick    :: Float
-  } deriving (Eq, Show)
+  { board  :: Board       -- bản đồ
+  , player :: Player      -- người chơi (sau này có thể là [Player])
+  , bombs  :: [Bomb]      -- danh sách bom đang có
+  , tick   :: Float       -- thời gian hiện tại
+  } deriving (Show, Eq, Generic)
+
+instance ToJSON GameState
+instance FromJSON GameState
+
+------------------------------------------------------------
+-- | Kiểu phụ trợ
+------------------------------------------------------------
+type Board = [[Cell]]

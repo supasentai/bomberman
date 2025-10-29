@@ -16,6 +16,8 @@ library:
     - network
     - brick
     - gloss
+    - aeson
+    - bytestring
     
 
 executables:
@@ -32,3 +34,5 @@ executables:
       - network
       - brick
       - gloss
+      - aeson
+      - bytestring  
