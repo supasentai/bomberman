@@ -1,5 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings, DeriveGeneric, RecordWildCards #-}
 
 module Server where
 
@@ -7,94 +6,54 @@ import Network.Socket
 import System.IO
 import Control.Concurrent
 import Control.Concurrent.STM
-import Control.Monad (forever)
-import Data.Aeson (encode)
+import Control.Monad (forever, void)
+import Data.Aeson
+import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Types
-import GameLogic (updateGame, canMove)
+import GameLogic (movePlayer, dropBomb)
 
-------------------------------------------------------------
--- | Cấu hình server
-------------------------------------------------------------
 port :: String
 port = "4242"
 
-------------------------------------------------------------
--- | Chạy server
-------------------------------------------------------------
 runServer :: IO ()
 runServer = withSocketsDo $ do
-  addrinfos <- getAddrInfo (Just defaultHints {addrFlags = [AI_PASSIVE]})
+  putStrLn "🖥️  Server running at port 4242"
+  addrinfos <- getAddrInfo (Just defaultHints { addrFlags = [AI_PASSIVE] })
                            Nothing (Just port)
   let serveraddr = head addrinfos
-
   sock <- socket (addrFamily serveraddr) Stream defaultProtocol
-  setSocketOption sock ReuseAddr 1
   bind sock (addrAddress serveraddr)
-  listen sock 2
-  putStrLn $ "🖥️  Server running at port " ++ port
+  listen sock 5
 
-  state <- newTVarIO initGame
+  gsVar <- newTVarIO initGameState
+
   forever $ do
-    (conn, addr) <- accept sock
-    putStrLn $ "✅ Client connected: " ++ show addr
+    (conn, clientAddr) <- accept sock
+    putStrLn $ "✅ Client connected: " ++ show clientAddr
     h <- socketToHandle conn ReadWriteMode
     hSetBuffering h NoBuffering
-    forkIO $ handleClient h state
+    forkIO $ handleClient h gsVar
 
-------------------------------------------------------------
--- | Mỗi client có 1 thread xử lý
-------------------------------------------------------------
 handleClient :: Handle -> TVar GameState -> IO ()
-handleClient h state = forever $ do
-  msg <- hGetLine h
-  atomically $ do
-    gs <- readTVar state
-    let gs' = applyAction msg gs
-    writeTVar state gs'
-  gsNew <- readTVarIO state
+handleClient h gsVar = forever $ do
+  msg <- BS.hGetLine h
+  let json = BL.fromStrict msg
+  case decode json :: Maybe Command of
+    Nothing -> putStrLn "⚠️ Invalid JSON"
+    Just Command{..} -> atomically $ do
+      gs <- readTVar gsVar
+      let gs' = applyAction playerId action gs
+      writeTVar gsVar gs'
+  gsNew <- readTVarIO gsVar
   BL.hPutStrLn h (encode gsNew)
 
-------------------------------------------------------------
--- | Xử lý hành động từ client
-------------------------------------------------------------
-applyAction :: String -> GameState -> GameState
-applyAction "W" = move (0,-1)
-applyAction "S" = move (0,1)
-applyAction "A" = move (-1,0)
-applyAction "D" = move (1,0)
-applyAction "B" = dropBomb
-applyAction _   = id
-
-------------------------------------------------------------
--- | Di chuyển người chơi
-------------------------------------------------------------
-move :: (Int, Int) -> GameState -> GameState
-move (dx, dy) gs@GameState{..} =
-  let (x, y) = pos player
-      newPos = (x + dx, y + dy)
-  in if canMove board newPos
-       then gs { player = player { pos = newPos } }
-       else gs
-
-------------------------------------------------------------
--- | Đặt bom
-------------------------------------------------------------
-dropBomb :: GameState -> GameState
-dropBomb gs@GameState{..} =
-  let p = player
-      already = any ((== pos p) . bPos) bombs
-  in if already
-        then gs
-        else gs { bombs = Bomb (pid p) (pos p) 3 : bombs }
-
-------------------------------------------------------------
--- | Game ban đầu
-------------------------------------------------------------
-initGame :: GameState
-initGame = GameState
-  { board  = replicate 10 (replicate 10 Empty)
-  , player = Player 1 (1,1) True
-  , bombs  = []
-  , tick   = 0
-  }
+applyAction :: Int -> String -> GameState -> GameState
+applyAction pid act gs =
+  case act of
+    "W" -> movePlayer pid (0,1) gs
+    "S" -> movePlayer pid (0,-1) gs
+    "A" -> movePlayer pid (-1,0) gs
+    "D" -> movePlayer pid (1,0) gs
+    "B" -> dropBomb pid gs
+    _   -> gs
