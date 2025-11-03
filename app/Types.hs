@@ -8,34 +8,51 @@ import Data.Aeson (ToJSON, FromJSON)
 
 -- | Các ô trên bản đồ
 data Cell = Empty | Wall | Box
-  deriving (Show, Eq, Generic, ToJSON, FromJSON)
+   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 type Board = [[Cell]]
 
--- | Người chơi
+-- | MỚI: Các loại vật phẩm
+data PowerUpType
+  = BombUp   -- Tăng số lượng bom
+  | FlameUp  -- Tăng tầm nổ
+  deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+-- | MỚI: Dữ liệu vật phẩm
+data PowerUp = PowerUp
+  { pupPos  :: (Int, Int)
+  , pupType :: PowerUpType
+  } deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+-- | NÂNG CẤP: Player giờ có chỉ số
 data Player = Player
-  { playerId :: Int
-  , pos :: (Int, Int)
-  , alive :: Bool
+  { playerId    :: Int
+  , pos         :: (Int, Int)
+  , alive       :: Bool
+  , maxBombs    :: Int -- Số bom tối đa
+  , blastRadius :: Int -- Tầm nổ
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 
--- | Bom
+-- | NÂNG CẤP: Bom giờ "nhớ" tầm nổ và người đặt
 data Bomb = Bomb
-  { bpos  :: (Int, Int)
-  , timer :: Float
+  { bpos    :: (Int, Int)
+  , timer   :: Float
+  , bRadius :: Int -- Tầm nổ của quả bom này
+  , bOwner  :: Int -- ID của người chơi đã đặt
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- | Lửa
+-- | Lửa (Giữ nguyên)
 data Flame = Flame
   { fpos    :: (Int, Int)
   , remain  :: Float
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- | Trạng thái toàn game
+-- | NÂNG CẤP: GameState có thêm 'powerups'
 data GameState = GameState
-  { board   :: Board
-  , players :: [Player]
-  , bombs   :: [Bomb]
-  , flames  :: [Flame]
+  { board    :: Board
+  , players  :: [Player]
+  , bombs    :: [Bomb]
+  , flames   :: [Flame]
+  , powerups :: [PowerUp] -- Danh sách vật phẩm
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)

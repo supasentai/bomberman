@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Main where
+module Main where -- (Giữ nguyên `Main` từ lần sửa trước)
 
 import Graphics.Gloss.Interface.IO.Game
 import Network.Socket
@@ -45,7 +45,10 @@ recvLoop st@ClientState{..} = forever $ do
 main :: IO ()
 main = do
   h <- connectServer "127.0.0.1" "4242"
-  initGame <- newIORef (GameState [[]] [] [] [])
+  
+  -- SỬA LỖI: Thêm `[]` thứ 5 cho `powerups`
+  initGame <- newIORef (GameState [[]] [] [] [] [])
+  
   let st = ClientState h initGame
   _ <- forkIO (recvLoop st)
   playIO
