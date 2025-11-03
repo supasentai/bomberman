@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module NetworkedMain where
+module Main where
 
 import Graphics.Gloss.Interface.IO.Game
 import Network.Socket

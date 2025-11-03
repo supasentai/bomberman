@@ -8,10 +8,10 @@ import Data.Maybe (isJust, fromMaybe) -- Thêm fromMaybe
 
 -- Cấu hình chung
 bombDefaultTimer :: Float
-bombDefaultTimer = 3.0
+bombDefaultTimer = 1.0
 
 flameDuration :: Float
-flameDuration = 1.5
+flameDuration = 0.5
 
 -- HÀM MỚI: Quy định tầm nổ của bom
 blastRadius :: Int
