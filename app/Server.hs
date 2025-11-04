@@ -11,7 +11,7 @@ import Control.Exception (handle, catch, IOException)
 import Data.Aeson (encode, decode)
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.Maybe (catMaybes)
-import Data.List (filter)
+import Data.List (filter, isPrefixOf) -- MỚI: Thêm isPrefixOf
 import Data.IORef (newIORef, readIORef, modifyIORef)
 import System.Random (newStdGen, randomR, StdGen)
 
@@ -37,7 +37,7 @@ initBoard =
   | y <- [0..8]
   ]
 
--- NÂNG CẤP: Thêm `status = Playing`
+-- NÂNG CẤP: Thêm `[]` cho chatHistory
 initGameState :: GameState
 initGameState = GameState initBoard
   [ Player 1 (1,1) True 1 2 -- 1 bom, tầm nổ 2
@@ -47,6 +47,7 @@ initGameState = GameState initBoard
   [] -- flames
   [] -- powerups
   Playing -- status
+  [] -- MỚI: chatHistory
 
 main :: IO ()
 main = runServer
@@ -83,39 +84,35 @@ runServer = withSocketsDo $ do
 
     forkIO $ clientHandler h stateVar clientsVar pid
 
--- NÂNG CẤP: gameLoop giờ xử lý reset game
+-- gameLoop (Giữ nguyên)
 gameLoop :: TVar GameState -> TVar [Handle] -> TVar StdGen -> IO ()
 gameLoop stateVar clientsVar rngVar = forever $ do
   threadDelay tickDelay
 
-  -- Lấy status CŨ và tick game
   (newGs, oldStatus) <- atomically $ do
     currentGs <- readTVar stateVar
     currentRng <- readTVar rngVar
     let (newGs, newRng) = tickGame dt currentRng currentGs
     writeTVar stateVar newGs
     writeTVar rngVar newRng
-    return (newGs, status currentGs) -- Trả về state MỚI và status CŨ
+    return (newGs, status currentGs)
   
-  -- Gửi state mới cho client
   handles <- readTVarIO clientsVar
   newHandles <- broadcast handles newGs
   atomically $ writeTVar clientsVar newHandles
   
-  -- KIỂM TRA RESET GAME (MỚI)
-  -- Chỉ reset khi game vừa chuyển từ Playing sang GameOver
   case (oldStatus, status newGs) of
     (Playing, GameOver _) -> do
       putStrLn "Game over! Resetting in 5 seconds..."
-      threadDelay 5000000 -- Chờ 5 giây
-      atomically $ writeTVar stateVar initGameState -- Reset
+      threadDelay 5000000
+      atomically $ writeTVar stateVar initGameState
       putStrLn "Game reset!"
     (Playing, Draw) -> do
       putStrLn "Draw! Resetting in 5 seconds..."
-      threadDelay 5000000 -- Chờ 5 giây
-      atomically $ writeTVar stateVar initGameState -- Reset
+      threadDelay 5000000
+      atomically $ writeTVar stateVar initGameState
       putStrLn "Game reset!"
-    _ -> return () -- Các trường hợp khác: không làm gì
+    _ -> return ()
 
 -- broadcast (Giữ nguyên)
 broadcast :: [Handle] -> GameState -> IO [Handle]
@@ -148,9 +145,18 @@ disconnectHandler h clientsVar _ = do
   putStrLn "Client disconnected."
   atomically $ modifyTVar clientsVar (filter (/= h))
 
--- updateFromCommand (Giữ nguyên)
+-- NÂNG CẤP: Xử lý lệnh game VÀ lệnh chat
 updateFromCommand :: GameState -> String -> Int -> GameState
 updateFromCommand gs cmd pid
+    -- MỚI: Xử lý chat
+    | "/say " `isPrefixOf` cmd =
+        let msg = drop 5 cmd -- Lấy nội dung sau "/say "
+            formattedMsg = "P" ++ show pid ++ ": " ++ msg
+        in 
+           -- Thêm tin nhắn vào đầu danh sách, giữ 10 tin nhắn gần nhất
+           gs { chatHistory = take 10 (formattedMsg : chatHistory gs) }
+
+    -- Logic game cũ
     | cmd == "w" = movePlayer pid ( 0, -1) gs
     | cmd == "s" = movePlayer pid ( 0,  1) gs
     | cmd == "a" = movePlayer pid (-1,  0) gs

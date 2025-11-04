@@ -3,11 +3,12 @@ module Render where
 import Graphics.Gloss
 import Types
 import Debug.Trace
+import Data.List (take)
 
 cellSize :: Float
 cellSize = 40
 
--- NÂNG CẤP: Thêm `drawStatus` vào danh sách `Pictures`
+-- drawGame (Giữ nguyên)
 drawGame :: GameState -> Picture
 drawGame gs =
   case board gs of
@@ -16,14 +17,14 @@ drawGame gs =
       Translate (-w'/2) (-h'/2 + 100) $
       Scale 1.2 1.2 $
       Pictures $
-        (concat -- Gộp tất cả hình ảnh game
+        (concat
           [ [drawBoard b]
           , drawPlayers h (players gs)
           , drawBombs h (bombs gs)
           , drawFlames h (flames gs)
           , drawPowerUps h (powerups gs)
           ])
-        ++ [drawStatus (status gs) (w, h)] -- MỚI: Thêm hình ảnh status
+        ++ [drawStatus (status gs) (w, h)]
       where
         w = length firstRow
         h = length b
@@ -97,26 +98,43 @@ drawPowerUps h pups =
               FlameUp -> orange
   ]
 
--- HÀM MỚI: Vẽ thông báo trạng thái game
+-- drawStatus (Giữ nguyên)
 drawStatus :: GameStatus -> (Int, Int) -> Picture
-drawStatus Playing _ = Blank -- Không vẽ gì
+drawStatus Playing _ = Blank
 drawStatus Draw (w, h) = centerText w h "DRAW!"
 drawStatus (GameOver 1) (w, h) = centerText w h "PLAYER 1 WINS!"
 drawStatus (GameOver 2) (w, h) = centerText w h "PLAYER 2 WINS!"
 drawStatus (GameOver pid) (w, h) = centerText w h ("PLAYER " ++ show pid ++ " WINS!")
 
--- HÀM MỚI: Hàm trợ giúp để căn giữa text
+-- centerText (Giữ nguyên)
 centerText :: Int -> Int -> String -> Picture
 centerText boardWidth boardHeight msg =
   let
-    -- Tính tọa độ pixel của trung tâm bảng
     centerX = (fromIntegral boardWidth * cellSize) / 2
     centerY = (fromIntegral boardHeight * cellSize) / 2
-    
-    -- Ước lượng độ rộng của text để căn giữa
-    textWidth = fromIntegral (length msg) * 12 -- Điều chỉnh 12 nếu cần
+    textWidth = fromIntegral (length msg) * 12
   in
     Translate (centerX - textWidth) (centerY - 10) $
-    Scale 0.2 0.2 $ -- Kích thước chữ
+    Scale 0.2 0.2 $
     Color white $
     Text msg
+
+-- SỬA LỖI: Dời tọa độ Y lên cao hơn (từ -270 thành -250)
+drawChatHistory :: [String] -> Picture
+drawChatHistory msgs =
+  Translate (-380) (-250) $ -- Vị trí góc dưới trái (ĐÃ NÂNG LÊN)
+  Scale 0.1 0.1 $
+  Pictures
+    [ Translate 0 (fromIntegral i * 20) $ Color (greyN 0.8) $ Text msg
+    | (i, msg) <- zip [0..] (take 8 msgs) 
+    ]
+
+-- drawChatInput (Giữ nguyên)
+drawChatInput :: Bool -> String -> Picture
+drawChatInput isTyping buffer =
+  Translate (-380) (-295) $ -- Vị trí ngay dưới lịch sử
+  Scale 0.12 0.12 $
+  Color white $
+  if isTyping
+  then Text ("> " ++ buffer ++ "_")
+  else Text "[Press Enter to chat]"

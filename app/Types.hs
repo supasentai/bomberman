@@ -12,19 +12,19 @@ data Cell = Empty | Wall | Box
 
 type Board = [[Cell]]
 
--- | MỚI: Các loại vật phẩm
+-- | Các loại vật phẩm
 data PowerUpType
   = BombUp
   | FlameUp
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- | MỚI: Dữ liệu vật phẩm
+-- | Dữ liệu vật phẩm
 data PowerUp = PowerUp
   { pupPos  :: (Int, Int)
   , pupType :: PowerUpType
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- | NÂNG CẤP: Player giờ có chỉ số
+-- | Player
 data Player = Player
   { playerId    :: Int
   , pos         :: (Int, Int)
@@ -34,7 +34,7 @@ data Player = Player
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 
--- | NÂNG CẤP: Bom
+-- | Bom
 data Bomb = Bomb
   { bpos    :: (Int, Int)
   , timer   :: Float
@@ -48,19 +48,20 @@ data Flame = Flame
   , remain  :: Float
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- | MỚI: Trạng thái ván đấu
+-- | Trạng thái ván đấu
 data GameStatus
   = Playing
-  | GameOver Int  -- Int là ID người thắng
+  | GameOver Int
   | Draw
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- | NÂNG CẤP: GameState có thêm 'powerups' và 'status'
+-- | NÂNG CẤP: GameState có thêm 'chatHistory'
 data GameState = GameState
   { board    :: Board
   , players  :: [Player]
   , bombs    :: [Bomb]
   , flames   :: [Flame]
   , powerups :: [PowerUp]
-  , status   :: GameStatus -- MỚI: Trạng thái game
+  , status   :: GameStatus
+  , chatHistory :: [String] -- MỚI: Lịch sử chat
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
