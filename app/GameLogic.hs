@@ -3,7 +3,7 @@
 module GameLogic where
 
 import Types
-import Data.List (mapAccumL, find, filter) -- MỚI: Thêm filter
+import Data.List (mapAccumL, find, filter)
 import Data.Maybe (isJust, fromMaybe)
 import System.Random (StdGen, randomR)
 
@@ -15,23 +15,35 @@ flameDuration = 1.5
 powerUpSpawnChance :: Float
 powerUpSpawnChance = 0.5
 
--- canMove (Giữ nguyên)
-canMove :: Board -> (Int, Int) -> Bool
-canMove b (x, y)
+-- NÂNG CẤP: `canMove` nhận `GameState`
+-- SỬA LỖI: Đã thêm `gs@GameState{..}`
+canMove :: GameState -> (Int, Int) -> Bool
+canMove gs@GameState{..} (x, y)
+  -- 1. Kiểm tra biên
   | x < 0 || y < 0 = False
-  | y >= length b || x >= length (head b) = False
+  | y >= length board || x >= length (head board) = False
   | otherwise =
-      case (b !! y) !! x of
-        Wall -> False
-        Box  -> False
-        _    -> True
+      let 
+        -- 2. Kiểm tra tường/hòm (giờ `board` là 1 biến)
+        cell = (board !! y) !! x
+        isWallOrBox = case cell of
+                        Wall -> True
+                        Box  -> True
+                        _    -> False
+        
+        -- 3. KIỂM TRA BOM (giờ `bombs` là 1 biến)
+        bombAtPos = any (\b -> bpos b == (x, y)) bombs
+
+      in 
+        -- Chỉ có thể đi khi KHÔNG phải tường/hòm VÀ KHÔNG có bom
+        not isWallOrBox && not bombAtPos
 
 -- applyPowerUp (Giữ nguyên)
 applyPowerUp :: Player -> PowerUpType -> Player
 applyPowerUp p BombUp  = p { maxBombs = maxBombs p + 1 }
 applyPowerUp p FlameUp = p { blastRadius = blastRadius p + 1 }
 
--- movePlayer (Giữ nguyên)
+-- NÂNG CẤP: `movePlayer` gọi `canMove gs` (Giữ nguyên từ lần trước)
 movePlayer :: Int -> (Int, Int) -> GameState -> GameState
 movePlayer pid (dx, dy) gs@GameState{..} =
   let (collectedAnything', ps') = mapAccumL updatePlayer False players
@@ -46,7 +58,8 @@ movePlayer pid (dx, dy) gs@GameState{..} =
       | playerId p == pid =
           let (x, y) = pos p
               newPos = (x + dx, y + dy)
-          in if canMove board newPos 
+          in 
+             if canMove gs newPos
              then 
                   let p' = p { pos = newPos }
                       mPowerUp = find (\pu -> pupPos pu == newPos) powerups
@@ -99,43 +112,32 @@ calculateExplosion board b@(Bomb pos _ radius _) =
       right  = getFlamesInDir board pos ( 1,  0) r
   in center ++ up ++ down ++ left ++ right
 
--- HÀM MỚI: Kiểm tra thắng thua
+-- checkGameStatus (Giữ nguyên)
 checkGameStatus :: [Player] -> GameStatus
 checkGameStatus livingPlayers =
   case livingPlayers of
-    []  -> Draw -- Không ai sống
-    [p] -> GameOver (playerId p) -- 1 người thắng
-    _   -> Playing -- Nhiều hơn 1 người, game tiếp tục
+    []  -> Draw
+    [p] -> GameOver (playerId p)
+    _   -> Playing
 
--- NÂNG CẤP: tickGame giờ kiểm tra 'status'
+-- tickGame (Giữ nguyên)
 tickGame :: Float -> StdGen -> GameState -> (GameState, StdGen)
 tickGame dt rng gs@GameState{..} =
-  -- Nếu game đã kết thúc, không làm gì cả
   case status of
     GameOver _ -> (gs, rng)
     Draw       -> (gs, rng)
-    -- Nếu game đang chơi, xử lý logic
     Playing    -> 
       let
-        -- 1. Cập nhật timers
         bombs'  = [ b { timer = timer b - dt } | b <- bombs, timer b - dt > 0 ]
         flames' = [ f { remain = remain f - dt } | f <- flames, remain f - dt > 0 ]
-
-        -- 2. Bom nổ
         explodingBombs = [ b | b <- bombs, timer b - dt <= 0 ]
         newFlames = concatMap (calculateExplosion board) explodingBombs
         allFlames = flames' ++ newFlames
         flamePositions = [fpos f | f <- allFlames]
-
-        -- 3. Cập nhật bảng và tạo vật phẩm
         (newBoard, destroyedBoxPos) = updateBoard board flamePositions
         (newPowerUps, newRng) = createPowerUps rng destroyedBoxPos
         allPowerUps = powerups ++ newPowerUps
-        
-        -- 4. Cập nhật người chơi
         newPlayers = updatePlayers players flamePositions
-        
-        -- 5. KIỂM TRA THẮNG THUA (MỚI)
         livingPlayers = filter alive newPlayers
         newStatus = checkGameStatus livingPlayers
 
@@ -144,7 +146,7 @@ tickGame dt rng gs@GameState{..} =
                    bombs    = bombs', 
                    flames   = allFlames, 
                    powerups = allPowerUps,
-                   status   = newStatus -- Cập nhật status
+                   status   = newStatus
                  }
       in
         (gs', newRng)
