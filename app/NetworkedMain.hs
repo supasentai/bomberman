@@ -46,8 +46,8 @@ main :: IO ()
 main = do
   h <- connectServer "127.0.0.1" "4242"
   
-  -- SỬA LỖI: Thêm `[]` thứ 5 cho `powerups`
-  initGame <- newIORef (GameState [[]] [] [] [] [])
+
+  initGame <- newIORef (GameState [[]] [] [] [] [] Playing)
   
   let st = ClientState h initGame
   _ <- forkIO (recvLoop st)

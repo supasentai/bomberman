@@ -3,19 +3,19 @@
 module GameLogic where
 
 import Types
-import Data.List (mapAccumL, find)
+import Data.List (mapAccumL, find, filter) -- MỚI: Thêm filter
 import Data.Maybe (isJust, fromMaybe)
 import System.Random (StdGen, randomR)
 
--- Cấu hình
+-- Cấu hình (Giữ nguyên)
 bombDefaultTimer :: Float
 bombDefaultTimer = 3.0
 flameDuration :: Float
 flameDuration = 1.5
 powerUpSpawnChance :: Float
-powerUpSpawnChance = 0.5 -- 50% cơ hội
+powerUpSpawnChance = 0.5
 
--- canMove
+-- canMove (Giữ nguyên)
 canMove :: Board -> (Int, Int) -> Bool
 canMove b (x, y)
   | x < 0 || y < 0 = False
@@ -26,24 +26,20 @@ canMove b (x, y)
         Box  -> False
         _    -> True
 
--- HÀM MỚI: Áp dụng vật phẩm cho người chơi
+-- applyPowerUp (Giữ nguyên)
 applyPowerUp :: Player -> PowerUpType -> Player
 applyPowerUp p BombUp  = p { maxBombs = maxBombs p + 1 }
 applyPowerUp p FlameUp = p { blastRadius = blastRadius p + 1 }
 
--- NÂNG CẤP: movePlayer giờ xử lý nhặt vật phẩm
+-- movePlayer (Giữ nguyên)
 movePlayer :: Int -> (Int, Int) -> GameState -> GameState
 movePlayer pid (dx, dy) gs@GameState{..} =
   let (collectedAnything', ps') = mapAccumL updatePlayer False players
-      
       gs' = gs { players = ps' }
-      
       (Player _ newPos _ _ _) = head [p | p <- ps', playerId p == pid]
-      
   in if collectedAnything'
      then gs' { powerups = filter (\p -> pupPos p /= newPos) powerups }
      else gs'
-  
   where
     updatePlayer :: Bool -> Player -> (Bool, Player)
     updatePlayer collected p
@@ -60,29 +56,26 @@ movePlayer pid (dx, dy) gs@GameState{..} =
              else (collected, p)
       | otherwise = (collected, p)
 
-
--- NÂNG CẤP: dropBomb giờ kiểm tra maxBombs
+-- dropBomb (Giữ nguyên)
 dropBomb :: Int -> GameState -> GameState
 dropBomb pid gs@GameState{..} =
   case find (\p -> playerId p == pid && alive p) players of
     Nothing -> gs
     Just p ->
-      let 
-        (x, y) = pos p
-        myBombs = length [b | b <- bombs, bOwner b == pid]
-      in
-        if myBombs < maxBombs p
-        then gs { bombs = Bomb (x, y) bombDefaultTimer (blastRadius p) pid : bombs }
-        else gs
+      let (x, y) = pos p
+          myBombs = length [b | b <- bombs, bOwner b == pid]
+      in if myBombs < maxBombs p
+         then gs { bombs = Bomb (x, y) bombDefaultTimer (blastRadius p) pid : bombs }
+         else gs
 
--- safeGetCell
+-- safeGetCell (Giữ nguyên)
 safeGetCell :: Board -> (Int, Int) -> Maybe Cell
 safeGetCell b (x, y)
   | y < 0 || y >= length b = Nothing
   | x < 0 || x >= length (head b) = Nothing
   | otherwise = Just ((b !! y) !! x)
 
--- getFlamesInDir
+-- getFlamesInDir (Giữ nguyên)
 getFlamesInDir :: Board -> (Int, Int) -> (Int, Int) -> Int -> [Flame]
 getFlamesInDir board (x, y) (dx, dy) n
   | n <= 0 = []
@@ -94,57 +87,77 @@ getFlamesInDir board (x, y) (dx, dy) n
            Just Box   -> [Flame newPos flameDuration]
            Just Empty -> (Flame newPos flameDuration) : getFlamesInDir board newPos (dx, dy) (n - 1)
 
--- NÂNG CẤP: calculateExplosion dùng bRadius từ Bomb
+-- calculateExplosion (Giữ nguyên)
 calculateExplosion :: Board -> Bomb -> [Flame]
 calculateExplosion board b@(Bomb pos _ radius _) =
-  let
-    (x, y) = pos
-    r = radius
-    center = [Flame pos flameDuration]
-    up     = getFlamesInDir board pos ( 0, -1) r
-    down   = getFlamesInDir board pos ( 0,  1) r
-    left   = getFlamesInDir board pos (-1,  0) r
-    right  = getFlamesInDir board pos ( 1,  0) r
-  in
-    center ++ up ++ down ++ left ++ right
+  let (x, y) = pos
+      r = radius
+      center = [Flame pos flameDuration]
+      up     = getFlamesInDir board pos ( 0, -1) r
+      down   = getFlamesInDir board pos ( 0,  1) r
+      left   = getFlamesInDir board pos (-1,  0) r
+      right  = getFlamesInDir board pos ( 1,  0) r
+  in center ++ up ++ down ++ left ++ right
 
--- NÂNG CẤP: tickGame dùng StdGen để tạo vật phẩm
+-- HÀM MỚI: Kiểm tra thắng thua
+checkGameStatus :: [Player] -> GameStatus
+checkGameStatus livingPlayers =
+  case livingPlayers of
+    []  -> Draw -- Không ai sống
+    [p] -> GameOver (playerId p) -- 1 người thắng
+    _   -> Playing -- Nhiều hơn 1 người, game tiếp tục
+
+-- NÂNG CẤP: tickGame giờ kiểm tra 'status'
 tickGame :: Float -> StdGen -> GameState -> (GameState, StdGen)
 tickGame dt rng gs@GameState{..} =
-  let
-    bombs'  = [ b { timer = timer b - dt } | b <- bombs, timer b - dt > 0 ]
-    flames' = [ f { remain = remain f - dt } | f <- flames, remain f - dt > 0 ]
-    explodingBombs = [ b | b <- bombs, timer b - dt <= 0 ]
-    newFlames = concatMap (calculateExplosion board) explodingBombs
-    allFlames = flames' ++ newFlames
-    flamePositions = [fpos f | f <- allFlames]
+  -- Nếu game đã kết thúc, không làm gì cả
+  case status of
+    GameOver _ -> (gs, rng)
+    Draw       -> (gs, rng)
+    -- Nếu game đang chơi, xử lý logic
+    Playing    -> 
+      let
+        -- 1. Cập nhật timers
+        bombs'  = [ b { timer = timer b - dt } | b <- bombs, timer b - dt > 0 ]
+        flames' = [ f { remain = remain f - dt } | f <- flames, remain f - dt > 0 ]
 
-    (newBoard, destroyedBoxPos) = updateBoard board flamePositions
-    (newPowerUps, newRng) = createPowerUps rng destroyedBoxPos
-    allPowerUps = powerups ++ newPowerUps
-    newPlayers = updatePlayers players flamePositions
+        -- 2. Bom nổ
+        explodingBombs = [ b | b <- bombs, timer b - dt <= 0 ]
+        newFlames = concatMap (calculateExplosion board) explodingBombs
+        allFlames = flames' ++ newFlames
+        flamePositions = [fpos f | f <- allFlames]
 
-    gs' = gs { board = newBoard, 
-               players = newPlayers, 
-               bombs = bombs', 
-               flames = allFlames, 
-               powerups = allPowerUps }
-  in
-    (gs', newRng)
+        -- 3. Cập nhật bảng và tạo vật phẩm
+        (newBoard, destroyedBoxPos) = updateBoard board flamePositions
+        (newPowerUps, newRng) = createPowerUps rng destroyedBoxPos
+        allPowerUps = powerups ++ newPowerUps
+        
+        -- 4. Cập nhật người chơi
+        newPlayers = updatePlayers players flamePositions
+        
+        -- 5. KIỂM TRA THẮNG THUA (MỚI)
+        livingPlayers = filter alive newPlayers
+        newStatus = checkGameStatus livingPlayers
 
--- HÀM MỚI: Tạo vật phẩm ngẫu nhiên (ĐÃ SỬA LỖI)
+        gs' = gs { board    = newBoard, 
+                   players  = newPlayers, 
+                   bombs    = bombs', 
+                   flames   = allFlames, 
+                   powerups = allPowerUps,
+                   status   = newStatus -- Cập nhật status
+                 }
+      in
+        (gs', newRng)
+
+-- createPowerUps (Giữ nguyên)
 createPowerUps :: StdGen -> [(Int, Int)] -> ([PowerUp], StdGen)
 createPowerUps rng [] = ([], rng)
 createPowerUps rng (pos:xs) =
   let
     (roll, rng') = randomR (0.0, 1.0) rng
-    -- SỬA LỖI: Thêm (:: Int) để GHC biết đây là số nguyên
     (pType, rng'') = randomR (0 :: Int, 1 :: Int) rng'
-    
     (remainingPowerUps, finalRng) = createPowerUps rng'' xs
-    
     thisPowerUp = if roll < powerUpSpawnChance
-                  -- 'pType' bây giờ đã rõ là Int, so sánh '==' hoạt động
                   then Just (PowerUp pos (if pType == 0 then BombUp else FlameUp))
                   else Nothing
   in
@@ -152,7 +165,7 @@ createPowerUps rng (pos:xs) =
       Just p  -> (p : remainingPowerUps, finalRng)
       Nothing -> (remainingPowerUps, finalRng)
 
--- updatePlayers
+-- updatePlayers (Giữ nguyên)
 updatePlayers :: [Player] -> [(Int, Int)] -> [Player]
 updatePlayers ps flamePositions =
   map updatePlayer ps
@@ -161,7 +174,7 @@ updatePlayers ps flamePositions =
       | pos p `elem` flamePositions && alive p = p { alive = False }
       | otherwise = p
 
--- NÂNG CẤP: updateBoard giờ trả về vị trí các hòm đã vỡ
+-- updateBoard (Giữ nguyên)
 updateBoard :: Board -> [(Int, Int)] -> (Board, [(Int, Int)])
 updateBoard b flamePositions =
   let
@@ -170,7 +183,6 @@ updateBoard b flamePositions =
     allDestroyed = concatMap snd processedRows
   in
     (newBoard, allDestroyed)
-  
   where
     processRow :: Int -> [Cell] -> (Int, ([Cell], [(Int, Int)]))
     processRow y row =
@@ -180,7 +192,6 @@ updateBoard b flamePositions =
         destroyedPos = concatMap snd processedCells
       in 
         (y+1, (newRow, destroyedPos))
-
     processCell :: Int -> Int -> Cell -> (Int, (Cell, [(Int, Int)]))
     processCell y x cell
       | (x, y) `elem` flamePositions =

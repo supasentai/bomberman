@@ -14,8 +14,8 @@ type Board = [[Cell]]
 
 -- | MỚI: Các loại vật phẩm
 data PowerUpType
-  = BombUp   -- Tăng số lượng bom
-  | FlameUp  -- Tăng tầm nổ
+  = BombUp
+  | FlameUp
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 -- | MỚI: Dữ liệu vật phẩm
@@ -29,30 +29,38 @@ data Player = Player
   { playerId    :: Int
   , pos         :: (Int, Int)
   , alive       :: Bool
-  , maxBombs    :: Int -- Số bom tối đa
-  , blastRadius :: Int -- Tầm nổ
+  , maxBombs    :: Int
+  , blastRadius :: Int
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 
--- | NÂNG CẤP: Bom giờ "nhớ" tầm nổ và người đặt
+-- | NÂNG CẤP: Bom
 data Bomb = Bomb
   { bpos    :: (Int, Int)
   , timer   :: Float
-  , bRadius :: Int -- Tầm nổ của quả bom này
-  , bOwner  :: Int -- ID của người chơi đã đặt
+  , bRadius :: Int
+  , bOwner  :: Int
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- | Lửa (Giữ nguyên)
+-- | Lửa
 data Flame = Flame
   { fpos    :: (Int, Int)
   , remain  :: Float
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- | NÂNG CẤP: GameState có thêm 'powerups'
+-- | MỚI: Trạng thái ván đấu
+data GameStatus
+  = Playing
+  | GameOver Int  -- Int là ID người thắng
+  | Draw
+  deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+-- | NÂNG CẤP: GameState có thêm 'powerups' và 'status'
 data GameState = GameState
   { board    :: Board
   , players  :: [Player]
   , bombs    :: [Bomb]
   , flames   :: [Flame]
-  , powerups :: [PowerUp] -- Danh sách vật phẩm
+  , powerups :: [PowerUp]
+  , status   :: GameStatus -- MỚI: Trạng thái game
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)

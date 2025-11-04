@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Main where -- (Giữ nguyên `Main` từ lần sửa trước)
+module Main where
 
 import Network.Socket
 import System.IO
@@ -13,7 +13,7 @@ import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.Maybe (catMaybes)
 import Data.List (filter)
 import Data.IORef (newIORef, readIORef, modifyIORef)
-import System.Random (newStdGen, randomR, StdGen) -- MỚI: Thêm System.Random
+import System.Random (newStdGen, randomR, StdGen)
 
 import Types
 import GameLogic
@@ -37,7 +37,7 @@ initBoard =
   | y <- [0..8]
   ]
 
--- NÂNG CẤP: Khởi tạo giá trị cho Player và powerups
+-- NÂNG CẤP: Thêm `status = Playing`
 initGameState :: GameState
 initGameState = GameState initBoard
   [ Player 1 (1,1) True 1 2 -- 1 bom, tầm nổ 2
@@ -46,6 +46,7 @@ initGameState = GameState initBoard
   [] -- bombs
   [] -- flames
   [] -- powerups
+  Playing -- status
 
 main :: IO ()
 main = runServer
@@ -62,11 +63,8 @@ runServer = withSocketsDo $ do
   stateVar   <- newTVarIO initGameState
   clientsVar <- newTVarIO []
   playerCounter <- newIORef 1
-  
-  -- MỚI: Khởi tạo bộ sinh số ngẫu nhiên
   rngVar <- newTVarIO =<< newStdGen
 
-  -- NÂNG CẤP: Truyền rngVar vào gameLoop
   _ <- forkIO $ gameLoop stateVar clientsVar rngVar
 
   -- Vòng lặp chấp nhận client (giữ nguyên)
@@ -85,24 +83,39 @@ runServer = withSocketsDo $ do
 
     forkIO $ clientHandler h stateVar clientsVar pid
 
--- NÂNG CẤP: Thêm TVar cho StdGen (rngVar)
+-- NÂNG CẤP: gameLoop giờ xử lý reset game
 gameLoop :: TVar GameState -> TVar [Handle] -> TVar StdGen -> IO ()
 gameLoop stateVar clientsVar rngVar = forever $ do
   threadDelay tickDelay
 
-  -- NÂNG CẤP: Lấy rng, tick game, và lưu lại rng mới
-  gsAndRng <- atomically $ do
+  -- Lấy status CŨ và tick game
+  (newGs, oldStatus) <- atomically $ do
     currentGs <- readTVar stateVar
     currentRng <- readTVar rngVar
     let (newGs, newRng) = tickGame dt currentRng currentGs
     writeTVar stateVar newGs
-    writeTVar rngVar newRng -- Lưu lại bộ sinh số ngẫu nhiên mới
-    return newGs
+    writeTVar rngVar newRng
+    return (newGs, status currentGs) -- Trả về state MỚI và status CŨ
   
-  -- `gsAndRng` giờ chỉ là `newGs`
+  -- Gửi state mới cho client
   handles <- readTVarIO clientsVar
-  newHandles <- broadcast handles gsAndRng
+  newHandles <- broadcast handles newGs
   atomically $ writeTVar clientsVar newHandles
+  
+  -- KIỂM TRA RESET GAME (MỚI)
+  -- Chỉ reset khi game vừa chuyển từ Playing sang GameOver
+  case (oldStatus, status newGs) of
+    (Playing, GameOver _) -> do
+      putStrLn "Game over! Resetting in 5 seconds..."
+      threadDelay 5000000 -- Chờ 5 giây
+      atomically $ writeTVar stateVar initGameState -- Reset
+      putStrLn "Game reset!"
+    (Playing, Draw) -> do
+      putStrLn "Draw! Resetting in 5 seconds..."
+      threadDelay 5000000 -- Chờ 5 giây
+      atomically $ writeTVar stateVar initGameState -- Reset
+      putStrLn "Game reset!"
+    _ -> return () -- Các trường hợp khác: không làm gì
 
 -- broadcast (Giữ nguyên)
 broadcast :: [Handle] -> GameState -> IO [Handle]
@@ -121,13 +134,11 @@ clientHandler h stateVar clientsVar pid =
   handle (disconnectHandler h clientsVar) $
     forever $ do
       line <- hGetLine h
-      
       newGs <- atomically $ do
           gs <- readTVar stateVar
           let gs' = updateFromCommand gs line pid
           writeTVar stateVar gs'
           return gs'
-      
       catch (BL.hPutStrLn h (encode newGs))
             (\e -> let _ = e :: IOException in return ())
 
