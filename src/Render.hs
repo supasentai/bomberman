@@ -8,14 +8,15 @@ import Data.List (take)
 cellSize :: Float
 cellSize = 40
 
--- drawGame (Giữ nguyên)
+-- SỬA LỖI: Thu nhỏ bản đồ (0.6) VÀ CĂN GIỮA
 drawGame :: GameState -> Picture
 drawGame gs =
   case board gs of
     [] -> Translate 0 0 $ Scale 0.2 0.2 $ Text "Board is empty"
     b@(firstRow:_) ->
-      Translate (-w'/2) (-h'/2 + 100) $
-      Scale 1.2 1.2 $
+      -- Dùng `Scale` bên ngoài `Translate` để căn giữa
+      Scale 0.6 0.6 $ -- SỬA LỖI: Thu nhỏ bản đồ (từ 0.65 -> 0.6)
+      Translate (-w'/2) (-h'/2) $
       Pictures $
         (concat
           [ [drawBoard b]
@@ -23,6 +24,7 @@ drawGame gs =
           , drawBombs h (bombs gs)
           , drawFlames h (flames gs)
           , drawPowerUps h (powerups gs)
+          , drawMonsters h (monsters gs)
           ])
         ++ [drawStatus (status gs) (w, h)]
       where
@@ -98,6 +100,15 @@ drawPowerUps h pups =
               FlameUp -> orange
   ]
 
+-- drawMonsters (Giữ nguyên)
+drawMonsters :: Int -> [Monster] -> [Picture]
+drawMonsters h ms =
+  [ translate (fromIntegral x * cellSize) 
+              (fromIntegral (h - 1 - y) * cellSize)
+      $ color (dark green) (rectangleSolid (cellSize*0.7) (cellSize*0.7))
+  | Monster _ (x,y) <- ms
+  ]
+
 -- drawStatus (Giữ nguyên)
 drawStatus :: GameStatus -> (Int, Int) -> Picture
 drawStatus Playing _ = Blank
@@ -119,20 +130,20 @@ centerText boardWidth boardHeight msg =
     Color white $
     Text msg
 
--- SỬA LỖI: Dời tọa độ Y lên cao hơn (từ -270 thành -250)
+-- SỬA LỖI: Dời lịch sử chat XUỐNG DƯỚI
 drawChatHistory :: [String] -> Picture
 drawChatHistory msgs =
-  Translate (-380) (-250) $ -- Vị trí góc dưới trái (ĐÃ NÂNG LÊN)
+  Translate (-380) (-280) $ -- Dời xuống (từ -200)
   Scale 0.1 0.1 $
   Pictures
     [ Translate 0 (fromIntegral i * 20) $ Color (greyN 0.8) $ Text msg
-    | (i, msg) <- zip [0..] (take 8 msgs) 
+    | (i, msg) <- zip [0..] (take 3 msgs) -- Chỉ hiện 3 dòng
     ]
 
--- drawChatInput (Giữ nguyên)
+-- SỬA LỖI: Dời hộp nhập liệu XUỐNG ĐÁY
 drawChatInput :: Bool -> String -> Picture
 drawChatInput isTyping buffer =
-  Translate (-380) (-295) $ -- Vị trí ngay dưới lịch sử
+  Translate (-380) (-300) $ -- Dời xuống (từ -295)
   Scale 0.12 0.12 $
   Color white $
   if isTyping

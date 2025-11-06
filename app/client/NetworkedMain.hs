@@ -12,6 +12,7 @@ import Data.Aeson (decode)
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.Char (isPrint)
 
+-- Import các module từ thư viện (trong 'src/')
 import Types
 import Render
 
@@ -23,17 +24,19 @@ data ClientState = ClientState
   , chatBuffer :: IORef String
   }
 
--- connectServer (Giữ nguyên)
+-- connectServer (Đã sửa lỗi `head` từ lần trước)
 connectServer :: String -> String -> IO Handle
 connectServer host port = do
   addrinfos <- getAddrInfo Nothing (Just host) (Just port)
-  let serveraddr = head addrinfos
-  sock <- socket (addrFamily serveraddr) Stream defaultProtocol
-  connect sock (addrAddress serveraddr)
-  h <- socketToHandle sock ReadWriteMode
-  hSetBuffering h LineBuffering
-  putStrLn "✅ Connected to Bomberman server!"
-  return h
+  case addrinfos of
+    [] -> ioError (userError "connectServer: getAddrInfo returned an empty list")
+    (serveraddr:_) -> do
+      sock <- socket (addrFamily serveraddr) Stream defaultProtocol
+      connect sock (addrAddress serveraddr)
+      h <- socketToHandle sock ReadWriteMode
+      hSetBuffering h LineBuffering
+      putStrLn "✅ Connected to Bomberman server!"
+      return h
 
 -- recvLoop (Giữ nguyên)
 recvLoop :: ClientState -> IO ()
@@ -44,12 +47,13 @@ recvLoop st@ClientState{..} = forever $ do
     Just gs -> writeIORef gameVar gs
     Nothing -> putStrLn "⚠️ Parse error from server"
 
--- main (Giữ nguyên)
+-- main (SỬA LỖI)
 main :: IO ()
 main = do
   h <- connectServer "127.0.0.1" "4242"
   
-  initGame <- newIORef (GameState [[]] [] [] [] [] Playing [])
+  -- SỬA LỖI: Thêm `[]` thứ 8 cho `monsters`
+  initGame <- newIORef (GameState [[]] [] [] [] [] Playing [] [])
   
   typingRef <- newIORef False
   bufferRef <- newIORef ""
@@ -58,7 +62,7 @@ main = do
   
   _ <- forkIO (recvLoop st)
   playIO
-    (InWindow "💣 Bomberman Client" (800, 600) (100, 100))
+    (InWindow "Bomberman Client" (800, 600) (100, 100))
     black
     30
     st
@@ -79,7 +83,7 @@ drawState ClientState{..} = do
   
   return (Pictures [gamePic, chatHistoryPic, chatInputPic])
 
--- handleInput (GiGữ nguyên)
+-- handleInput (Giữ nguyên)
 handleInput :: Event -> ClientState -> IO ClientState
 handleInput event st@ClientState{..} = do
   typing <- readIORef isTyping
@@ -104,34 +108,28 @@ handlePlaying (EventKey (Char c) Down _ _) st@ClientState{..}
       return st
 handlePlaying _ st = return st
 
--- NÂNG CẤP: Xử lý Backspace (cả 2 kiểu)
+-- handleTyping (Giữ nguyên)
 handleTyping :: Event -> ClientState -> IO ClientState
 handleTyping (EventKey (SpecialKey KeyEnter) Down _ _) st@ClientState{..} = do
-  -- Nhấn Enter (gõ) -> Gửi tin nhắn
   buffer <- readIORef chatBuffer
   if not (null buffer)
   then do
     hPutStrLn connHandle ("/say " ++ buffer)
     hFlush connHandle
-    writeIORef chatBuffer "" -- Xóa buffer
+    writeIORef chatBuffer ""
   else
     return ()
   
-  writeIORef isTyping False -- Chuyển về chế độ chơi
+  writeIORef isTyping False
   return st
-
 handleTyping (EventKey (SpecialKey KeyBackspace) Down _ _) st@ClientState{..} = do
-  -- SỬA LỖI 1: Xử lý `SpecialKey KeyBackspace`
   modifyIORef chatBuffer (\b -> if null b then "" else init b)
   return st
-
 handleTyping (EventKey (Char '\b') Down _ _) st@ClientState{..} = do
-  -- SỬA LỖI 2: Xử lý `Char '\b'` (Backspace trên một số hệ thống)
   modifyIORef chatBuffer (\b -> if null b then "" else init b)
   return st
-
 handleTyping (EventKey (Char c) Down _ _) st@ClientState{..}
-  | isPrint c = do -- Chỉ nhận các ký tự in được
+  | isPrint c = do
       modifyIORef chatBuffer (\b -> b ++ [c])
       return st
-handleTyping _ st = return st -- Bỏ qua các phím khác
+handleTyping _ st = return st

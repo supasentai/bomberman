@@ -6,25 +6,25 @@ module Types where
 import GHC.Generics (Generic)
 import Data.Aeson (ToJSON, FromJSON)
 
--- | Các ô trên bản đồ
+-- Cell (Giữ nguyên)
 data Cell = Empty | Wall | Box
    deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 type Board = [[Cell]]
 
--- | Các loại vật phẩm
+-- PowerUpType (Giữ nguyên)
 data PowerUpType
   = BombUp
   | FlameUp
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- | Dữ liệu vật phẩm
+-- PowerUp (Giữ nguyên)
 data PowerUp = PowerUp
   { pupPos  :: (Int, Int)
   , pupType :: PowerUpType
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- | Player
+-- Player (Giữ nguyên)
 data Player = Player
   { playerId    :: Int
   , pos         :: (Int, Int)
@@ -34,7 +34,7 @@ data Player = Player
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 
--- | Bom
+-- Bomb (Giữ nguyên)
 data Bomb = Bomb
   { bpos    :: (Int, Int)
   , timer   :: Float
@@ -42,26 +42,33 @@ data Bomb = Bomb
   , bOwner  :: Int
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- | Lửa
+-- Flame (Giữ nguyên)
 data Flame = Flame
   { fpos    :: (Int, Int)
   , remain  :: Float
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- | Trạng thái ván đấu
+-- GameStatus (Giữ nguyên)
 data GameStatus
   = Playing
   | GameOver Int
   | Draw
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- | NÂNG CẤP: GameState có thêm 'chatHistory'
+-- HÀM MỚI: Định nghĩa quái vật
+data Monster = Monster
+  { mId  :: Int
+  , mPos :: (Int, Int)
+  } deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+-- NÂNG CẤP: GameState có thêm 'monsters'
 data GameState = GameState
-  { board    :: Board
-  , players  :: [Player]
-  , bombs    :: [Bomb]
-  , flames   :: [Flame]
-  , powerups :: [PowerUp]
-  , status   :: GameStatus
-  , chatHistory :: [String] -- MỚI: Lịch sử chat
+  { board       :: Board
+  , players     :: [Player]
+  , bombs       :: [Bomb]
+  , flames      :: [Flame]
+  , powerups    :: [PowerUp]
+  , status      :: GameStatus
+  , chatHistory :: [String]
+  , monsters    :: [Monster] -- MỚI: Thêm danh sách quái vật
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
