@@ -130,22 +130,29 @@ centerText boardWidth boardHeight msg =
     Color white $
     Text msg
 
--- SỬA LỖI: Dời lịch sử chat XUỐNG DƯỚI
+
+-- LỊCH SỬ CHAT: Tin mới ở TRÊN, chạy từ TRÊN XUỐNG
 drawChatHistory :: [String] -> Picture
 drawChatHistory msgs =
-  Translate (-380) (-280) $ -- Dời xuống (từ -200)
-  Scale 0.1 0.1 $
-  Pictures
-    [ Translate 0 (fromIntegral i * 20) $ Color (greyN 0.8) $ Text msg
-    | (i, msg) <- zip [0..] (take 3 msgs) -- Chỉ hiện 3 dòng
-    ]
+  let recentMsgs = take 6 msgs  -- KHÔNG REVERSE → tin mới ở CUỐI danh sách
+      -- Vì server thêm tin vào ĐẦU: newMsg : oldMsgs
+      -- → tin mới nhất = last (take 6 msgs)
+  in Translate (-350) (-380) $  -- BẮT ĐẦU TỪ DƯỚI
+     Scale 0.11 0.11 $
+     Pictures
+       [ Translate 0 (fromIntegral i * 140) $  -- VẼ TỪ DƯỚI LÊN
+         Color (greyN 0.9) $
+         Text (take 50 msg)
+       | (i, msg) <- zip [0..] recentMsgs
+       ]
 
--- SỬA LỖI: Dời hộp nhập liệu XUỐNG ĐÁY
+-- INPUT: Dưới cùng, dưới dòng chat mới nhất
 drawChatInput :: Bool -> String -> Picture
 drawChatInput isTyping buffer =
-  Translate (-380) (-300) $ -- Dời xuống (từ -295)
+  Translate (-350) (-400) $
   Scale 0.12 0.12 $
   Color white $
   if isTyping
-  then Text ("> " ++ buffer ++ "_")
-  else Text "[Press Enter to chat]"
+  then Text ("> " ++ take 45 buffer ++ (if length buffer > 45 then "..." else "") ++ "_")
+  else Text "[Enter để chat]"
+

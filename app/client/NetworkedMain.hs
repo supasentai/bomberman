@@ -35,7 +35,7 @@ connectServer host port = do
       connect sock (addrAddress serveraddr)
       h <- socketToHandle sock ReadWriteMode
       hSetBuffering h LineBuffering
-      putStrLn "✅ Connected to Bomberman server!"
+      putStrLn " Connected to Bomberman server!"
       return h
 
 -- recvLoop (Giữ nguyên)
@@ -45,7 +45,7 @@ recvLoop st@ClientState{..} = forever $ do
   let msg = BL.pack msgLine
   case decode msg of
     Just gs -> writeIORef gameVar gs
-    Nothing -> putStrLn "⚠️ Parse error from server"
+    Nothing -> putStrLn " Parse error from server"
 
 -- main (Giữ nguyên, đã sửa lỗi init)
 main :: IO ()
@@ -79,7 +79,8 @@ drawState ClientState{..} = do
   let gamePic = drawGame gs
   let chatHistoryPic = drawChatHistory (chatHistory gs)
   let chatInputPic = drawChatInput typing buffer
-  
+
+  -- VẼ: game → chat → input (chat ở trên)
   return (Pictures [gamePic, chatHistoryPic, chatInputPic])
 
 -- handleInput (Giữ nguyên)
