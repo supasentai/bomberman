@@ -55,13 +55,13 @@ data GameStatus
   | Draw
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- HÀM MỚI: Định nghĩa quái vật
+-- Monster (Giữ nguyên)
 data Monster = Monster
   { mId  :: Int
   , mPos :: (Int, Int)
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- NÂNG CẤP: GameState có thêm 'monsters'
+-- NÂNG CẤP: GameState có thêm 'monsterMoveTimer'
 data GameState = GameState
   { board       :: Board
   , players     :: [Player]
@@ -70,5 +70,6 @@ data GameState = GameState
   , powerups    :: [PowerUp]
   , status      :: GameStatus
   , chatHistory :: [String]
-  , monsters    :: [Monster] -- MỚI: Thêm danh sách quái vật
+  , monsters    :: [Monster]
+  , monsterMoveTimer :: Float -- MỚI: Thêm timer cho quái vật
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)

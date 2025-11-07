@@ -24,7 +24,7 @@ data ClientState = ClientState
   , chatBuffer :: IORef String
   }
 
--- connectServer (Đã sửa lỗi `head` từ lần trước)
+-- connectServer (Giữ nguyên)
 connectServer :: String -> String -> IO Handle
 connectServer host port = do
   addrinfos <- getAddrInfo Nothing (Just host) (Just port)
@@ -47,13 +47,12 @@ recvLoop st@ClientState{..} = forever $ do
     Just gs -> writeIORef gameVar gs
     Nothing -> putStrLn "⚠️ Parse error from server"
 
--- main (SỬA LỖI)
+-- main (Giữ nguyên, đã sửa lỗi init)
 main :: IO ()
 main = do
   h <- connectServer "127.0.0.1" "4242"
   
-  -- SỬA LỖI: Thêm `[]` thứ 8 cho `monsters`
-  initGame <- newIORef (GameState [[]] [] [] [] [] Playing [] [])
+  initGame <- newIORef (GameState [[]] [] [] [] [] Playing [] [] 0.0)
   
   typingRef <- newIORef False
   bufferRef <- newIORef ""
@@ -108,7 +107,7 @@ handlePlaying (EventKey (Char c) Down _ _) st@ClientState{..}
       return st
 handlePlaying _ st = return st
 
--- handleTyping (Giữ nguyên)
+-- handleTyping (SỬA LỖI)
 handleTyping :: Event -> ClientState -> IO ClientState
 handleTyping (EventKey (SpecialKey KeyEnter) Down _ _) st@ClientState{..} = do
   buffer <- readIORef chatBuffer
@@ -132,4 +131,5 @@ handleTyping (EventKey (Char c) Down _ _) st@ClientState{..}
   | isPrint c = do
       modifyIORef chatBuffer (\b -> b ++ [c])
       return st
+
 handleTyping _ st = return st

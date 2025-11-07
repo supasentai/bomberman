@@ -87,7 +87,6 @@ generateMaze rng =
 sprinkleBoxes :: StdGen -> Board -> (Board, StdGen)
 sprinkleBoxes rng board =
   let
-      -- Lấy tất cả ô trống
       emptyCells = [(x, y) | y <- [1..mazeHeight-2], x <- [1..mazeWidth-2], 
                              (board !! y) !! x == Empty]
       boxChance = 0.4 :: Float
@@ -101,7 +100,6 @@ sprinkleOne chance (b, r) pos =
      then (updateBoardCell b pos Box, r')
      else (b, r')
 
--- HÀM MỚI (CẢI TIẾN 1): Đảm bảo vùng xuất phát trống
 createSafeZone :: Board -> Board
 createSafeZone board =
   let 
@@ -109,7 +107,6 @@ createSafeZone board =
     p2Pos = (mazeWidth-2, mazeHeight-2)
     p2Zone = [p2Pos, (fst p2Pos - 1, snd p2Pos), (fst p2Pos, snd p2Pos - 1)]
     
-    -- Dùng `foldl'` để áp dụng `updateBoardCell` cho từng vị trí
     clearedBoard = foldl' (\b pos -> updateBoardCell b pos Empty) board (p1Zone ++ p2Zone)
   in
     clearedBoard
@@ -117,7 +114,7 @@ createSafeZone board =
 findRandomEmpty :: StdGen -> Board -> Int -> ([(Int, Int)], StdGen)
 findRandomEmpty rng _ 0 = ([], rng)
 findRandomEmpty rng board n =
-  let -- Bỏ 2 ô góc đầu và cuối để tránh spawn quái vật lên người chơi
+  let 
       emptyCells = [(x, y) | y <- [1..mazeHeight-2], x <- [1..mazeWidth-2], 
                              (board !! y) !! x == Empty,
                              (x,y) /= (1,1), (x,y) /= (mazeWidth-2, mazeHeight-2)]
@@ -126,19 +123,16 @@ findRandomEmpty rng board n =
       (remainingPos, r'') = findRandomEmpty r' board (n-1)
   in (pos : remainingPos, r'')
 
--- NÂNG CẤP: `initialGameState` (Cải tiến 1 & 2)
+-- NÂNG CẤP: `initialGameState` (Thêm monsterMoveTimer)
 initialGameState :: StdGen -> (GameState, StdGen)
 initialGameState rng =
   let (mazeBoard, r1) = generateMaze rng
       (boxedBoard, r2) = sprinkleBoxes r1 mazeBoard
-      
-      -- SỬA LỖI (CẢI TIẾN 1): Tạo vùng an toàn
       finalBoard = createSafeZone boxedBoard 
       
       (monsterPos, r3) = findRandomEmpty r2 finalBoard 5 
       monsters = [Monster i pos | (i, pos) <- zip [1..] monsterPos]
       
-      -- SỬA LỖI (CẢI TIẾN 2): Tầm nổ mặc định là 1
       players = [ Player 1 (1,1) True 1 1
                 , Player 2 (mazeWidth-2, mazeHeight-2) True 1 1 ]
   in
@@ -151,6 +145,7 @@ initialGameState rng =
       , status = Playing
       , chatHistory = []
       , monsters = monsters
+      , monsterMoveTimer = 0.0 -- SỬA LỖI: Thêm trường bị thiếu
       }, r3)
 -- ========== KẾT THÚC LOGIC MÊ CUNG ==========
 

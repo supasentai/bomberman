@@ -3,21 +3,32 @@
 module GameLogic where
 
 import Types
-import Data.List (mapAccumL, find, filter, partition)
+import Data.List (mapAccumL, find, filter, partition, sortBy)
 import Data.Maybe (isJust, fromMaybe, catMaybes)
 import System.Random (StdGen, randomR)
 import Control.Parallel.Strategies (parList, rseq, using)
 
+-- Imports cho BFS (Giữ nguyên)
+import qualified Data.Map.Strict as Map
+import Data.Map.Strict (Map)
+import qualified Data.Set as Set
+import Data.Set (Set)
+import qualified Data.Sequence as Seq
+import Data.Sequence (Seq, (|>), ViewL(..))
+import Data.Foldable (toList)
+
 -- Cấu hình
 bombDefaultTimer :: Float
 bombDefaultTimer = 3.0
-
--- SỬA LỖI (CẢI TIẾN 3): Giảm thời gian lửa tồn tại
 flameDuration :: Float
-flameDuration = 0.8 -- Giảm từ 1.5
-
+flameDuration = 0.8
 powerUpSpawnChance :: Float
 powerUpSpawnChance = 0.5
+
+-- MỚI: Tốc độ di chuyển của quái vật (giây)
+-- (0.5 = 1 lần mỗi 0.5 giây = 2 ô/giây)
+monsterMoveSpeed :: Float
+monsterMoveSpeed = 0.5 
 
 -- canMove (Giữ nguyên)
 canMove :: GameState -> (Int, Int) -> Bool
@@ -156,7 +167,72 @@ updateFlameTimer dt f =
   let r = remain f - dt
   in if r > 0 then Just (f { remain = r }) else Nothing
 
--- tickGame (Giữ nguyên)
+-- LOGIC AI TÌM ĐƯỜNG (Giữ nguyên)
+findClosestPlayer :: (Int, Int) -> [Player] -> Maybe (Int, Int)
+findClosestPlayer mPos allPlayers =
+  let livingPlayers = filter alive allPlayers
+      dist (x, y) (px, py) = abs (x - px) + abs (y - py)
+      sortedPlayers = sortBy (\p1 p2 -> compare (dist mPos (pos p1)) (dist mPos (pos p2))) livingPlayers
+  in case sortedPlayers of
+      []    -> Nothing
+      (p:_) -> Just (pos p)
+
+findPath :: Board -> [(Int, Int)] -> (Int, Int) -> (Int, Int) -> Maybe (Int, Int)
+findPath board obstacles start end =
+  case board of
+    [] -> Nothing
+    (firstRow:_) -> 
+      let
+        width = length firstRow
+        height = length board
+        isWalkable :: (Int, Int) -> Bool
+        isWalkable p@(x, y) =
+          x >= 0 && y >= 0 && x < width && y < height &&
+          (case (board !! y) !! x of
+             Wall -> False
+             Box  -> False
+             _    -> True) &&
+          not (p `elem` obstacles)
+
+        bfs :: Seq ((Int, Int), (Int, Int)) -> Set (Int, Int) -> Maybe (Int, Int)
+        bfs queue visited
+          | Seq.null queue = Nothing
+          | otherwise =
+              case Seq.viewl queue of
+                EmptyL -> Nothing
+                ((currPos, firstStep) :< rest) ->
+                  if currPos == end
+                  then Just firstStep
+                  else
+                    let (cx, cy) = currPos
+                        neighbors = filter (\p -> isWalkable p && not (Set.member p visited))
+                                       [(cx+1, cy), (cx-1, cy), (cx, cy+1), (cx, cy-1)]
+                        newVisited = Set.union visited (Set.fromList neighbors)
+                        updateStep n = if currPos == start then n else firstStep
+                        newQueue = foldl (\q n -> q |> ((n, updateStep n))) rest neighbors
+                    in
+                      bfs newQueue newVisited
+      in
+        bfs (Seq.singleton (start, start)) (Set.singleton start)
+
+calculateMonsterMove :: GameState -> Monster -> Monster
+calculateMonsterMove gs m =
+  let 
+    mPos' = mPos m
+    targetPos = findClosestPlayer mPos' (players gs)
+    obstacles = (map bpos (bombs gs)) ++ 
+                (map mPos (filter (\m' -> mId m' /= mId m) (monsters gs)))
+  in
+    case targetPos of
+      Nothing -> m
+      Just target ->
+        case findPath (board gs) obstacles mPos' target of
+          Nothing -> m
+          Just nextStep -> m { mPos = nextStep }
+-- ========== KẾT THÚC LOGIC AI ==========
+
+
+-- NÂNG CẤP: tickGame giờ kiểm tra `monsterMoveTimer`
 tickGame :: Float -> StdGen -> GameState -> (GameState, StdGen)
 tickGame dt rng gs@GameState{..} =
   case status of
@@ -164,10 +240,13 @@ tickGame dt rng gs@GameState{..} =
     Draw       -> (gs, rng)
     Playing    -> 
       let
+        -- 1. SONG SONG: Cập nhật timer (Bom/Lửa)
         updatedBombs = map (updateBombTimer dt) bombs `using` parList rseq
         bombsToKeep = catMaybes updatedBombs
         updatedFlames = map (updateFlameTimer dt) flames `using` parList rseq
         flames' = catMaybes updatedFlames
+
+        -- 2. NỔ DÂY CHUYỀN
         (explodingBombs, remainingBombs) = 
             partition (\b -> timer b - dt <= 0) bombsToKeep
         (newFlames, bombsAfterExplosion) = 
@@ -175,11 +254,25 @@ tickGame dt rng gs@GameState{..} =
         allFlames = flames' ++ newFlames
         flamePositions = [fpos f | f <- allFlames]
         
+        -- 3. CẬP NHẬT BẢN ĐỒ VÀ VẬT PHẨM
         (newBoard, destroyedBoxPos) = updateBoard board flamePositions
         (newPowerUps, newRng) = createPowerUps rng destroyedBoxPos
         allPowerUps = powerups ++ newPowerUps
         
-        newMonsters = monsters 
+        -- 4. CẬP NHẬT AI (ĐÃ GIẢM TỐC)
+        (newMonsters, newMonsterTimer) =
+          if monsterMoveTimer <= 0
+          then
+            -- Timer đã hết, TÍNH TOÁN LẠI (SONG SONG)
+            let 
+              aiMoves = map (calculateMonsterMove gs) monsters `using` parList rseq
+            in
+              (aiMoves, monsterMoveSpeed) -- Reset timer
+          else
+            -- Timer chưa hết, KHÔNG TÍNH TOÁN, chỉ giảm timer
+            (monsters, monsterMoveTimer - dt) 
+        
+        -- 5. CẬP NHẬT NGƯỜI CHƠI VÀ TRẠNG THÁI
         newPlayers = updatePlayers players flamePositions newMonsters
         livingPlayers = filter alive newPlayers
         newStatus = checkGameStatus livingPlayers
@@ -190,7 +283,8 @@ tickGame dt rng gs@GameState{..} =
                    flames   = allFlames, 
                    powerups = allPowerUps,
                    status   = newStatus,
-                   monsters = newMonsters
+                   monsters = newMonsters,
+                   monsterMoveTimer = newMonsterTimer -- Cập nhật timer
                  }
       in
         (gs', newRng)

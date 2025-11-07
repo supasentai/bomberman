@@ -16,7 +16,7 @@ ghc-options:
 - -rtsopts
 - -with-rtsopts=-N
 
-# Dependencies chung cho toàn bộ dự án
+# Dependencies chung
 dependencies:
 - base >= 4.7 && < 5
 
@@ -33,6 +33,7 @@ library:
     - gloss
     - random
     - parallel
+    - containers  # <-- MỚI: Thêm `containers` cho BFS
 
 # --- 2. TỆP THỰC THI (Tách biệt) ---
 executables:
@@ -43,21 +44,19 @@ executables:
     source-dirs:         app/server
     dependencies:
     - FP-HASKELL    # Thư viện (Types, Render, GameLogic)
-    # Dependencies mà Server.hs dùng trực tiếp
     - network
     - aeson
     - bytestring
     - stm
     - random
-    - containers  # <-- SỬA LỖI: Thêm `containers` (cho Data.Set)
+    - containers  # Đã thêm ở lần trước
 
   # --- CLIENT ---
   bomberman-client:
     main:                NetworkedMain.hs
     source-dirs:         app/client
     dependencies:
-    - FP-HASKELL    # Thư viện
-    # Dependencies mà NetworkedMain.hs dùng trực tiếp
+    - FP-HASKELL
     - gloss
     - network
     - aeson
