@@ -4,16 +4,15 @@ import Graphics.Gloss
 import Types
 import Debug.Trace
 import Data.List (take)
-import Text.Printf (printf) -- MỚI: Thêm Printf (nếu bạn chưa có)
+import Text.Printf (printf)
 
 cellSize :: Float
 cellSize = 40
 
--- SỬA LỖI: Xóa logic `chatUI` ra khỏi `drawGame`
+-- drawGame (Giữ nguyên)
 drawGame :: GameState -> Picture
 drawGame gs =
   let
-    -- 1. Vẽ thế giới game
     gameWorld =
       case board gs of
         [] -> Translate 0 0 $ Scale 0.2 0.2 $ Text "Board is empty"
@@ -23,7 +22,7 @@ drawGame gs =
           Pictures $
             (concat
               [ [drawBoard b]
-              , drawPlayers h (players gs)
+              , drawPlayers h (players gs) (gamePhaseTimer gs) -- Sửa: Truyền timer
               , drawBombs h (bombs gs)
               , drawFlames h (flames gs)
               , drawPowerUps h (powerups gs)
@@ -36,12 +35,9 @@ drawGame gs =
             w' = fromIntegral w * cellSize
             h' = fromIntegral h * cellSize
     
-    -- 2. Vẽ Timer (vẫn là một phần của thế giới game)
     timerUI = drawGamePhaseTimer (gamePhaseTimer gs)
   in
-    -- `drawGame` giờ chỉ trả về game và timer.
-    -- `NetworkedMain.hs` sẽ lo phần gộp chat.
-    Pictures [gameWorld, timerUI]
+    Pictures [gameWorld, timerUI] -- Sửa: Xóa chatUI (lỗi)
 
 -- drawBoard (Giữ nguyên)
 drawBoard :: Board -> Picture
@@ -59,18 +55,26 @@ drawCell Wall  = color (greyN 0.2) $ rectangleSolid cellSize cellSize
 drawCell Box   = color (greyN 0.4) $ rectangleSolid cellSize cellSize
 drawCell Empty = color (greyN 0.7) $ rectangleSolid cellSize cellSize
 
--- drawPlayers (Giữ nguyên)
-drawPlayers :: Int -> [Player] -> [Picture]
-drawPlayers h ps =
+-- NÂNG CẤP: `drawPlayers` (Thêm Khiên và hiệu ứng Chaos)
+drawPlayers :: Int -> [Player] -> Float -> [Picture]
+drawPlayers h ps gameTime =
   [ translate (fromIntegral x * cellSize)
               (fromIntegral (h - 1 - y) * cellSize)
       $ Pictures
-          [ color (dark (greyN 0.1)) (translate 3 (-3) (circleSolid r))
+          [ -- Bóng
+            color (dark (greyN 0.1)) (translate 3 (-3) (circleSolid r))
+            -- Khiên
+          , if hasShield then color (makeColor 1 1 1 0.3) (circleSolid (r*1.5)) else Blank
+            -- Nhân vật
           , color col (circleSolid r)
           ]
-  | Player pid (x,y) True _ _ <- ps
-  , let col = if pid == 1 then red else blue
+  | Player pid (x,y) True _ _ hasShield chaosT <- ps
   , let r = cellSize / 3
+  , let -- Hiệu ứng Chaos
+        chaosColor = if chaosT > 0 && (round (chaosT * 10) `mod` 2 == 0)
+                     then yellow -- Nhấp nháy màu vàng
+                     else if pid == 1 then red else blue
+        col = chaosColor
   ]
 
 -- drawBombs (Giữ nguyên)
@@ -95,7 +99,7 @@ drawFlames h fs =
   , let alpha = max 0 (r / 1.5)
   ]
 
--- drawPowerUps (Giữ nguyên)
+-- NÂNG CẤP: `drawPowerUps` (Thêm màu)
 drawPowerUps :: Int -> [PowerUp] -> [Picture]
 drawPowerUps h pups =
   [ translate (fromIntegral x * cellSize) 
@@ -108,6 +112,8 @@ drawPowerUps h pups =
   , let c = case pType of
               BombUp  -> yellow
               FlameUp -> orange
+              Shield  -> white
+              Chaos   -> magenta
   ]
 
 -- drawMonsters (Giữ nguyên)
@@ -157,8 +163,7 @@ drawGamePhaseTimer timer
       Color white $
       Text (printf "%.1f" timer)
 
--- drawChatHistory (Giữ nguyên, bố cục của bạn)
--- Hàm này sẽ được gọi bởi `NetworkedMain.hs`
+-- drawChatHistory (Giữ nguyên)
 drawChatHistory :: [String] -> Picture
 drawChatHistory msgs =
   let recentMsgs = take 6 msgs
@@ -171,8 +176,7 @@ drawChatHistory msgs =
        | (i, msg) <- zip [0..] recentMsgs
        ]
 
--- drawChatInput (Giữ nguyên, bố cục của bạn)
--- Hàm này sẽ được gọi bởi `NetworkedMain.hs`
+-- drawChatInput (Giữ nguyên)
 drawChatInput :: Bool -> String -> Picture
 drawChatInput isTyping buffer =
   Translate (-350) (-400) $

@@ -12,10 +12,12 @@ data Cell = Empty | Wall | Box
 
 type Board = [[Cell]]
 
--- PowerUpType (Giữ nguyên)
+-- NÂNG CẤP: Thêm `Shield` và `Chaos`
 data PowerUpType
   = BombUp
   | FlameUp
+  | Shield  -- MỚI: Chặn 1 lần sát thương
+  | Chaos   -- MỚI: Bom nổ nhanh
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 -- PowerUp (Giữ nguyên)
@@ -24,13 +26,15 @@ data PowerUp = PowerUp
   , pupType :: PowerUpType
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- Player (Giữ nguyên)
+-- NÂNG CẤP: Player có thêm `hasShield` và `chaosTimer`
 data Player = Player
   { playerId    :: Int
   , pos         :: (Int, Int)
   , alive       :: Bool
   , maxBombs    :: Int
   , blastRadius :: Int
+  , hasShield   :: Bool  -- MỚI
+  , chaosTimer  :: Float -- MỚI
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 
@@ -55,18 +59,17 @@ data GameStatus
   | Draw
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- MỚI: Loại quái vật
+-- Monster (Giữ nguyên)
 data MonsterType = Grunt | Ghost
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- NÂNG CẤP: Quái vật giờ có 'mType'
 data Monster = Monster
   { mId   :: Int
   , mPos  :: (Int, Int)
-  , mType :: MonsterType -- MỚI: Grunt (thường) hay Ghost (ma)
+  , mType :: MonsterType
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- NÂNG CẤP: GameState có thêm 'gamePhaseTimer'
+-- GameState (Giữ nguyên)
 data GameState = GameState
   { board            :: Board
   , players          :: [Player]
@@ -77,5 +80,5 @@ data GameState = GameState
   , chatHistory      :: [String]
   , monsters         :: [Monster]
   , monsterMoveTimer :: Float
-  , gamePhaseTimer   :: Float -- MỚI: Đếm ngược 30 giây
+  , gamePhaseTimer   :: Float
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)

@@ -52,7 +52,8 @@ main :: IO ()
 main = do
   h <- connectServer "127.0.0.1" "4242"
   
-  -- SỬA LỖI: Thêm `30.0` (trường thứ 10) cho `gamePhaseTimer`
+  -- SỬA LỖI: Xóa 2 đối số thừa (False, 0.0) ở cuối.
+  -- GameState chỉ có 10 đối số.
   initGame <- newIORef (GameState [[]] [] [] [] [] Playing [] [] 0.0 30.0)
   
   typingRef <- newIORef False
@@ -70,22 +71,14 @@ main = do
     handleInput
     (\_ -> return)
 
--- NÂNG CẤP: drawState (Sửa lỗi logic)
+-- drawState (Giữ nguyên)
 drawState :: ClientState -> IO Picture
 drawState ClientState{..} = do
-  -- 1. Lấy trạng thái game (từ server)
   gs <- readIORef gameVar
-  -- 2. Lấy trạng thái gõ phím (NỘI BỘ client)
   typing <- readIORef isTyping
   buffer <- readIORef chatBuffer
 
-  -- 3. Vẽ các thành phần
-  --    drawGame (vẽ bản đồ, timer) dùng `gs`
   let gamePic = drawGame gs 
-  
-  -- SỬA LỖI LOGIC:
-  --    drawChatHistory phải dùng `chatHistory` từ `gs`
-  --    drawChatInput phải dùng `typing` và `buffer` từ `ClientState`
   let chatHistoryPic = drawChatHistory (chatHistory gs)
   let chatInputPic = drawChatInput typing buffer
   
