@@ -47,12 +47,13 @@ recvLoop st@ClientState{..} = forever $ do
     Just gs -> writeIORef gameVar gs
     Nothing -> putStrLn " Parse error from server"
 
--- main (Giữ nguyên, đã sửa lỗi init)
+-- main (SỬA LỖI)
 main :: IO ()
 main = do
   h <- connectServer "127.0.0.1" "4242"
   
-  initGame <- newIORef (GameState [[]] [] [] [] [] Playing [] [] 0.0)
+  -- SỬA LỖI: Thêm `30.0` (trường thứ 10) cho `gamePhaseTimer`
+  initGame <- newIORef (GameState [[]] [] [] [] [] Playing [] [] 0.0 30.0)
   
   typingRef <- newIORef False
   bufferRef <- newIORef ""
@@ -69,18 +70,25 @@ main = do
     handleInput
     (\_ -> return)
 
--- drawState (Giữ nguyên)
+-- NÂNG CẤP: drawState (Sửa lỗi logic)
 drawState :: ClientState -> IO Picture
 drawState ClientState{..} = do
+  -- 1. Lấy trạng thái game (từ server)
   gs <- readIORef gameVar
+  -- 2. Lấy trạng thái gõ phím (NỘI BỘ client)
   typing <- readIORef isTyping
   buffer <- readIORef chatBuffer
 
-  let gamePic = drawGame gs
+  -- 3. Vẽ các thành phần
+  --    drawGame (vẽ bản đồ, timer) dùng `gs`
+  let gamePic = drawGame gs 
+  
+  -- SỬA LỖI LOGIC:
+  --    drawChatHistory phải dùng `chatHistory` từ `gs`
+  --    drawChatInput phải dùng `typing` và `buffer` từ `ClientState`
   let chatHistoryPic = drawChatHistory (chatHistory gs)
   let chatInputPic = drawChatInput typing buffer
-
-  -- VẼ: game → chat → input (chat ở trên)
+  
   return (Pictures [gamePic, chatHistoryPic, chatInputPic])
 
 -- handleInput (Giữ nguyên)
@@ -108,7 +116,7 @@ handlePlaying (EventKey (Char c) Down _ _) st@ClientState{..}
       return st
 handlePlaying _ st = return st
 
--- handleTyping (SỬA LỖI)
+-- handleTyping (Giữ nguyên)
 handleTyping :: Event -> ClientState -> IO ClientState
 handleTyping (EventKey (SpecialKey KeyEnter) Down _ _) st@ClientState{..} = do
   buffer <- readIORef chatBuffer
@@ -132,5 +140,4 @@ handleTyping (EventKey (Char c) Down _ _) st@ClientState{..}
   | isPrint c = do
       modifyIORef chatBuffer (\b -> b ++ [c])
       return st
-
 handleTyping _ st = return st

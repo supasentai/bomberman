@@ -4,34 +4,44 @@ import Graphics.Gloss
 import Types
 import Debug.Trace
 import Data.List (take)
+import Text.Printf (printf) -- MỚI: Thêm Printf (nếu bạn chưa có)
 
 cellSize :: Float
 cellSize = 40
 
--- SỬA LỖI: Thu nhỏ bản đồ (0.6) VÀ CĂN GIỮA
+-- SỬA LỖI: Xóa logic `chatUI` ra khỏi `drawGame`
 drawGame :: GameState -> Picture
 drawGame gs =
-  case board gs of
-    [] -> Translate 0 0 $ Scale 0.2 0.2 $ Text "Board is empty"
-    b@(firstRow:_) ->
-      -- Dùng `Scale` bên ngoài `Translate` để căn giữa
-      Scale 0.6 0.6 $ -- SỬA LỖI: Thu nhỏ bản đồ (từ 0.65 -> 0.6)
-      Translate (-w'/2) (-h'/2) $
-      Pictures $
-        (concat
-          [ [drawBoard b]
-          , drawPlayers h (players gs)
-          , drawBombs h (bombs gs)
-          , drawFlames h (flames gs)
-          , drawPowerUps h (powerups gs)
-          , drawMonsters h (monsters gs)
-          ])
-        ++ [drawStatus (status gs) (w, h)]
-      where
-        w = length firstRow
-        h = length b
-        w' = fromIntegral w * cellSize
-        h' = fromIntegral h * cellSize
+  let
+    -- 1. Vẽ thế giới game
+    gameWorld =
+      case board gs of
+        [] -> Translate 0 0 $ Scale 0.2 0.2 $ Text "Board is empty"
+        b@(firstRow:_) ->
+          Scale 0.6 0.6 $
+          Translate (-w'/2) (-h'/2) $
+          Pictures $
+            (concat
+              [ [drawBoard b]
+              , drawPlayers h (players gs)
+              , drawBombs h (bombs gs)
+              , drawFlames h (flames gs)
+              , drawPowerUps h (powerups gs)
+              , drawMonsters h (monsters gs)
+              ])
+            ++ [drawStatus (status gs) (w, h)]
+          where
+            w = length firstRow
+            h = length b
+            w' = fromIntegral w * cellSize
+            h' = fromIntegral h * cellSize
+    
+    -- 2. Vẽ Timer (vẫn là một phần của thế giới game)
+    timerUI = drawGamePhaseTimer (gamePhaseTimer gs)
+  in
+    -- `drawGame` giờ chỉ trả về game và timer.
+    -- `NetworkedMain.hs` sẽ lo phần gộp chat.
+    Pictures [gameWorld, timerUI]
 
 -- drawBoard (Giữ nguyên)
 drawBoard :: Board -> Picture
@@ -105,8 +115,11 @@ drawMonsters :: Int -> [Monster] -> [Picture]
 drawMonsters h ms =
   [ translate (fromIntegral x * cellSize) 
               (fromIntegral (h - 1 - y) * cellSize)
-      $ color (dark green) (rectangleSolid (cellSize*0.7) (cellSize*0.7))
-  | Monster _ (x,y) <- ms
+      $ color col (rectangleSolid (cellSize*0.7) (cellSize*0.7))
+  | Monster _ (x,y) mType <- ms
+  , let col = case mType of
+                Grunt -> dark green
+                Ghost -> makeColor 200 100 255 255
   ]
 
 -- drawStatus (Giữ nguyên)
@@ -130,23 +143,36 @@ centerText boardWidth boardHeight msg =
     Color white $
     Text msg
 
+-- drawGamePhaseTimer (Giữ nguyên)
+drawGamePhaseTimer :: Float -> Picture
+drawGamePhaseTimer timer
+  | timer <= 0 =
+      Translate 250 280 $
+      Scale 0.15 0.15 $
+      Color red $
+      Text "GHOSTS UNLEASHED!"
+  | otherwise =
+      Translate 300 280 $
+      Scale 0.2 0.2 $
+      Color white $
+      Text (printf "%.1f" timer)
 
--- LỊCH SỬ CHAT: Tin mới ở TRÊN, chạy từ TRÊN XUỐNG
+-- drawChatHistory (Giữ nguyên, bố cục của bạn)
+-- Hàm này sẽ được gọi bởi `NetworkedMain.hs`
 drawChatHistory :: [String] -> Picture
 drawChatHistory msgs =
-  let recentMsgs = take 6 msgs  -- KHÔNG REVERSE → tin mới ở CUỐI danh sách
-      -- Vì server thêm tin vào ĐẦU: newMsg : oldMsgs
-      -- → tin mới nhất = last (take 6 msgs)
-  in Translate (-350) (-380) $  -- BẮT ĐẦU TỪ DƯỚI
+  let recentMsgs = take 6 msgs
+  in Translate (-350) (-380) $
      Scale 0.11 0.11 $
      Pictures
-       [ Translate 0 (fromIntegral i * 140) $  -- VẼ TỪ DƯỚI LÊN
+       [ Translate 0 (fromIntegral i * 140) $
          Color (greyN 0.9) $
          Text (take 50 msg)
        | (i, msg) <- zip [0..] recentMsgs
        ]
 
--- INPUT: Dưới cùng, dưới dòng chat mới nhất
+-- drawChatInput (Giữ nguyên, bố cục của bạn)
+-- Hàm này sẽ được gọi bởi `NetworkedMain.hs`
 drawChatInput :: Bool -> String -> Picture
 drawChatInput isTyping buffer =
   Translate (-350) (-400) $
@@ -155,4 +181,3 @@ drawChatInput isTyping buffer =
   if isTyping
   then Text ("> " ++ take 45 buffer ++ (if length buffer > 45 then "..." else "") ++ "_")
   else Text "[Enter để chat]"
-

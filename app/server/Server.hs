@@ -123,7 +123,7 @@ findRandomEmpty rng board n =
       (remainingPos, r'') = findRandomEmpty r' board (n-1)
   in (pos : remainingPos, r'')
 
--- NÂNG CẤP: `initialGameState` (Thêm monsterMoveTimer)
+-- NÂNG CẤP: `initialGameState` (Thêm type, timer)
 initialGameState :: StdGen -> (GameState, StdGen)
 initialGameState rng =
   let (mazeBoard, r1) = generateMaze rng
@@ -131,7 +131,8 @@ initialGameState rng =
       finalBoard = createSafeZone boxedBoard 
       
       (monsterPos, r3) = findRandomEmpty r2 finalBoard 5 
-      monsters = [Monster i pos | (i, pos) <- zip [1..] monsterPos]
+      -- MỚI: Khởi tạo tất cả là 'Grunt'
+      monsters = [Monster i pos Grunt | (i, pos) <- zip [1..] monsterPos]
       
       players = [ Player 1 (1,1) True 1 1
                 , Player 2 (mazeWidth-2, mazeHeight-2) True 1 1 ]
@@ -145,7 +146,8 @@ initialGameState rng =
       , status = Playing
       , chatHistory = []
       , monsters = monsters
-      , monsterMoveTimer = 0.0 -- SỬA LỖI: Thêm trường bị thiếu
+      , monsterMoveTimer = 0.0
+      , gamePhaseTimer = 30.0 -- MỚI: Khởi tạo 30 giây
       }, r3)
 -- ========== KẾT THÚC LOGIC MÊ CUNG ==========
 

@@ -55,21 +55,27 @@ data GameStatus
   | Draw
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- Monster (Giữ nguyên)
+-- MỚI: Loại quái vật
+data MonsterType = Grunt | Ghost
+  deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+-- NÂNG CẤP: Quái vật giờ có 'mType'
 data Monster = Monster
-  { mId  :: Int
-  , mPos :: (Int, Int)
+  { mId   :: Int
+  , mPos  :: (Int, Int)
+  , mType :: MonsterType -- MỚI: Grunt (thường) hay Ghost (ma)
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- NÂNG CẤP: GameState có thêm 'monsterMoveTimer'
+-- NÂNG CẤP: GameState có thêm 'gamePhaseTimer'
 data GameState = GameState
-  { board       :: Board
-  , players     :: [Player]
-  , bombs       :: [Bomb]
-  , flames      :: [Flame]
-  , powerups    :: [PowerUp]
-  , status      :: GameStatus
-  , chatHistory :: [String]
-  , monsters    :: [Monster]
-  , monsterMoveTimer :: Float -- MỚI: Thêm timer cho quái vật
+  { board            :: Board
+  , players          :: [Player]
+  , bombs            :: [Bomb]
+  , flames           :: [Flame]
+  , powerups         :: [PowerUp]
+  , status           :: GameStatus
+  , chatHistory      :: [String]
+  , monsters         :: [Monster]
+  , monsterMoveTimer :: Float
+  , gamePhaseTimer   :: Float -- MỚI: Đếm ngược 30 giây
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)

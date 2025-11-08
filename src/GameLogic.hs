@@ -27,7 +27,7 @@ powerUpSpawnChance = 0.5
 monsterMoveSpeed :: Float
 monsterMoveSpeed = 0.5 
 
--- canMove (Giữ nguyên)
+-- canMove (Dùng cho Player, giữ nguyên)
 canMove :: GameState -> (Int, Int) -> Bool
 canMove gs@GameState{..} (x, y) =
   case board of
@@ -166,6 +166,27 @@ updateFlameTimer dt f =
 
 -- ========== LOGIC AI TÌM ĐƯỜNG (ĐÃ NÂNG CẤP) ==========
 
+-- HÀM MỚI: Kiểm tra va chạm cho AI (dùng MonsterType)
+aiIsWalkable :: GameState -> MonsterType -> (Int, Int) -> Bool
+aiIsWalkable gs@GameState{..} mType (x, y) =
+  case board of
+    [] -> False
+    (firstRow:_) ->
+      let width = length firstRow
+          height = length board
+      in
+        x >= 0 && y >= 0 && x < width && y < height &&
+        -- Kiểm tra ô
+        (case (board !! y) !! x of
+           Wall -> False
+           Box  -> case mType of -- NÂNG CẤP
+                     Grunt -> False -- Grunt bị chặn
+                     Ghost -> True  -- Ghost đi xuyên
+           _    -> True) &&
+        -- Kiểm tra vật thể
+        not (any (\b -> bpos b == (x, y)) bombs) &&
+        not (any (\m -> mPos m == (x, y)) monsters)
+
 -- 1. Tìm mục tiêu (Giữ nguyên)
 findClosestPlayer :: (Int, Int) -> [Player] -> Maybe (Int, Int)
 findClosestPlayer mPos allPlayers =
@@ -176,84 +197,65 @@ findClosestPlayer mPos allPlayers =
       []    -> Nothing
       (p:_) -> Just (pos p)
 
--- 2. Thuật toán BFS (Giữ nguyên)
-findPath :: Board -> [(Int, Int)] -> (Int, Int) -> (Int, Int) -> Maybe (Int, Int)
-findPath board obstacles start end =
-  case board of
-    [] -> Nothing
-    (firstRow:_) -> 
-      let
-        width = length firstRow
-        height = length board
-        isWalkable :: (Int, Int) -> Bool
-        isWalkable p@(x, y) =
-          x >= 0 && y >= 0 && x < width && y < height &&
-          (case (board !! y) !! x of
-             Wall -> False
-             Box  -> False
-             _    -> True) &&
-          not (p `elem` obstacles)
-
-        bfs :: Seq ((Int, Int), (Int, Int)) -> Set (Int, Int) -> Maybe (Int, Int)
-        bfs queue visited
-          | Seq.null queue = Nothing
-          | otherwise =
-              case Seq.viewl queue of
-                EmptyL -> Nothing
-                ((currPos, firstStep) :< rest) ->
-                  if currPos == end
-                  then Just firstStep
-                  else
-                    let (cx, cy) = currPos
-                        neighbors = filter (\p -> isWalkable p && not (Set.member p visited))
-                                       [(cx+1, cy), (cx-1, cy), (cx, cy+1), (cx, cy-1)]
-                        newVisited = Set.union visited (Set.fromList neighbors)
-                        updateStep n = if currPos == start then n else firstStep
-                        newQueue = foldl (\q n -> q |> ((n, updateStep n))) rest neighbors
-                    in
-                      bfs newQueue newVisited
-      in
-        bfs (Seq.singleton (start, start)) (Set.singleton start)
-
--- HÀM MỚI: Logic "Lang thang" (Wander)
--- Thử di chuyển 4 hướng theo thứ tự
-wander :: GameState -> Monster -> Monster
-wander gs m =
+-- 2. Thuật toán BFS (NÂNG CẤP: dùng `aiIsWalkable`)
+findPath :: GameState -> MonsterType -> [(Int, Int)] -> (Int, Int) -> (Int, Int) -> Maybe (Int, Int)
+findPath gs mType obstacles start end =
   let
-    (x, y) = mPos m
-    -- Thử 4 hướng theo thứ tự ưu tiên
+    -- `isWalkable` giờ là `aiIsWalkable` (đã loại bỏ chướng ngại vật)
+    isWalkable = aiIsWalkable (gs { monsters = [] }) mType -- Bỏ qua quái vật
+
+    bfs :: Seq ((Int, Int), (Int, Int)) -> Set (Int, Int) -> Maybe (Int, Int)
+    bfs queue visited
+      | Seq.null queue = Nothing
+      | otherwise =
+          case Seq.viewl queue of
+            EmptyL -> Nothing
+            ((currPos, firstStep) :< rest) ->
+              if currPos == end
+              then Just firstStep
+              else
+                let (cx, cy) = currPos
+                    neighbors = filter (\p -> isWalkable p && not (Set.member p visited))
+                                   [(cx+1, cy), (cx-1, cy), (cx, cy+1), (cx, cy-1)]
+                    newVisited = Set.union visited (Set.fromList neighbors)
+                    updateStep n = if currPos == start then n else firstStep
+                    newQueue = foldl (\q n -> q |> ((n, updateStep n))) rest neighbors
+                in
+                  bfs newQueue newVisited
+  in
+    bfs (Seq.singleton (start, start)) (Set.singleton start)
+
+-- NÂNG CẤP: `wander` dùng `aiIsWalkable`
+wander :: GameState -> Monster -> Monster
+wander gs m@(Monster _ (x,y) mType') =
+  let
     possibleMoves = [(x, y-1), (x, y+1), (x-1, y), (x+1, y)]
-    
-    -- Lấy hướng đi hợp lệ đầu tiên
-    -- `canMove` sẽ tự động kiểm tra (tường, bom, quái vật khác)
-    validMove = find (canMove gs) possibleMoves
+    -- Dùng logic di chuyển của AI
+    validMove = find (aiIsWalkable gs mType') possibleMoves
   in
     case validMove of
-      Nothing -> m -- Bị kẹt hoàn toàn, đứng yên
-      Just pos -> m { mPos = pos } -- Di chuyển "lang thang"
+      Nothing -> m
+      Just pos -> m { mPos = pos }
 
--- NÂNG CẤP: `calculateMonsterMove` giờ sẽ "lang thang"
+-- NÂNG CẤP: `calculateMonsterMove`
 calculateMonsterMove :: GameState -> Monster -> Monster
-calculateMonsterMove gs m =
+calculateMonsterMove gs m@(Monster _ mPos' mType') =
   let 
-    mPos' = mPos m
     targetPos = findClosestPlayer mPos' (players gs)
+    -- Vật cản (bom, quái vật khác)
     obstacles = (map bpos (bombs gs)) ++ 
                 (map mPos (filter (\m' -> mId m' /= mId m) (monsters gs)))
   in
     case targetPos of
-      -- SỬA: Nếu không có người chơi, đi lang thang
       Nothing -> wander gs m
       Just target ->
-        -- Tính toán (tác vụ nặng)
-        case findPath (board gs) obstacles mPos' target of
-          -- SỬA: Nếu không tìm thấy đường, đi lang thang
+        case findPath gs mType' obstacles mPos' target of
           Nothing -> wander gs m
-          Just nextStep -> m { mPos = nextStep } -- Có đường, di chuyển
+          Just nextStep -> m { mPos = nextStep }
 -- ========== KẾT THÚC LOGIC AI ==========
 
 
--- NÂNG CẤP: tickGame (Giữ nguyên từ lần trước)
+-- NÂNG CẤP: tickGame (Thêm logic "Tiến hóa" quái vật)
 tickGame :: Float -> StdGen -> GameState -> (GameState, StdGen)
 tickGame dt rng gs@GameState{..} =
   case status of
@@ -280,18 +282,29 @@ tickGame dt rng gs@GameState{..} =
         (newPowerUps, newRng) = createPowerUps rng destroyedBoxPos
         allPowerUps = powerups ++ newPowerUps
         
-        -- 4. CẬP NHẬT AI (ĐÃ GIẢM TỐC)
+        -- 4. NÂNG CẤP AI: Tiến hóa quái vật sau 30s
+        (evolvedMonsters, newPhaseTimer) =
+          if gamePhaseTimer > 0
+          then -- Giai đoạn 1: Đếm ngược
+               let newTimer = gamePhaseTimer - dt
+               in if newTimer <= 0
+                  then (map (\m -> m { mType = Ghost }) monsters, 0.0) -- Tiến hóa!
+                  else (monsters, newTimer) -- Tiếp tục đếm
+          else (monsters, 0.0) -- Giai đoạn 2: Giữ nguyên
+        
+        -- 5. CẬP NHẬT AI (ĐÃ GIẢM TỐC)
         (monsterMoves, newMonsterTimer) =
           if monsterMoveTimer <= 0
           then
-            (map (calculateMonsterMove gs) monsters `using` parList rseq, monsterMoveSpeed)
+            -- Tính toán song song dựa trên quái vật đã/chưa tiến hóa
+            (map (calculateMonsterMove gs {monsters = evolvedMonsters}) evolvedMonsters `using` parList rseq, monsterMoveSpeed)
           else
-            (monsters, monsterMoveTimer - dt) 
+            (evolvedMonsters, monsterMoveTimer - dt) 
         
-        -- 5. LỌC QUÁI VẬT SỐNG SÓT
+        -- 6. LỌC QUÁI VẬT SỐNG SÓT
         survivingMonsters = filter (\m -> mPos m `notElem` flamePositions) monsterMoves
         
-        -- 6. CẬP NHẬT NGƯỜI CHƠI VÀ TRẠNG THÁI
+        -- 7. CẬP NHẬT NGƯỜI CHƠI VÀ TRẠNG THÁI
         newPlayers = updatePlayers players flamePositions survivingMonsters
         livingPlayers = filter alive newPlayers
         newStatus = checkGameStatus livingPlayers
@@ -303,7 +316,8 @@ tickGame dt rng gs@GameState{..} =
                    powerups = allPowerUps,
                    status   = newStatus,
                    monsters = survivingMonsters,
-                   monsterMoveTimer = newMonsterTimer
+                   monsterMoveTimer = newMonsterTimer,
+                   gamePhaseTimer = newPhaseTimer -- Lưu lại timer 30s
                  }
       in
         (gs', newRng)
