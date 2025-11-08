@@ -52,8 +52,7 @@ main :: IO ()
 main = do
   h <- connectServer "127.0.0.1" "4242"
   
-  -- SỬA LỖI: Xóa 2 đối số thừa (False, 0.0) ở cuối.
-  -- GameState chỉ có 10 đối số.
+  -- SỬA LỖI: GameState có 10 trường
   initGame <- newIORef (GameState [[]] [] [] [] [] Playing [] [] 0.0 30.0)
   
   typingRef <- newIORef False

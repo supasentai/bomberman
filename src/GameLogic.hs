@@ -33,9 +33,9 @@ chaosDuration = 10.0 -- 10 giây
 chaosBombTimer :: Float
 chaosBombTimer = 0.5 -- 0.5 giây
 
--- canMove (Giữ nguyên)
-canMove :: GameState -> (Int, Int) -> Bool
-canMove gs@GameState{..} (x, y) =
+-- NÂNG CẤP: `canMove` (Thêm logic "Đi xuyên bom" cho Chaos)
+canMove :: GameState -> Player -> (Int, Int) -> Bool
+canMove gs@GameState{..} p (x, y) =
   case board of
     [] -> False
     (firstRow:_) ->
@@ -49,10 +49,14 @@ canMove gs@GameState{..} (x, y) =
                           Wall -> True
                           Box  -> True
                           _    -> False
+          
+          -- NÂNG CẤP: Logic "Đi xuyên bom"
           bombAtPos = any (\b -> bpos b == (x, y)) bombs
+          isBlockedByBomb = bombAtPos && (chaosTimer p <= 0) -- Bị chặn NẾU không chaos
+
           monsterAtPos = any (\m -> mPos m == (x, y)) monsters
         in 
-          not isWallOrBox && not bombAtPos && not monsterAtPos
+          not isWallOrBox && not isBlockedByBomb && not monsterAtPos
 
 -- NÂNG CẤP: `applyPowerUp` (Thêm `Shield` và `Chaos`)
 applyPowerUp :: Player -> PowerUpType -> Player
@@ -61,7 +65,7 @@ applyPowerUp p FlameUp = p { blastRadius = blastRadius p + 1 }
 applyPowerUp p Shield  = p { hasShield = True }
 applyPowerUp p Chaos   = p { chaosTimer = chaosDuration }
 
--- movePlayer (Giữ nguyên)
+-- NÂNG CẤP: `movePlayer` (Cập nhật pattern match và gọi `canMove`)
 movePlayer :: Int -> (Int, Int) -> GameState -> GameState
 movePlayer pid (dx, dy) gs@GameState{..} =
   let (collectedAnything', ps') = mapAccumL updatePlayer False players
@@ -80,7 +84,8 @@ movePlayer pid (dx, dy) gs@GameState{..} =
       | playerId p == pid =
           let (x, y) = pos p
               newPos = (x + dx, y + dy)
-          in if canMove gs newPos 
+          in 
+             if canMove gs p newPos -- Truyền `p`
              then 
                   let p' = p { pos = newPos }
                       mPowerUp = find (\pu -> pupPos pu == newPos) powerups
@@ -187,9 +192,7 @@ updatePlayerTimers dt = map update
           in p { chaosTimer = if newTimer < 0 then 0 else newTimer }
       | otherwise = p
 
--- ========== LOGIC AI TÌM ĐƯỜNG (ĐÃ SỬA) ==========
-
--- HÀM MỚI: Kiểm tra va chạm cho AI (dùng MonsterType)
+-- ========== LOGIC AI TÌM ĐƯỜNG (Giữ nguyên) ==========
 aiIsWalkable :: GameState -> MonsterType -> (Int, Int) -> Bool
 aiIsWalkable gs@GameState{..} mType (x, y) =
   case board of
@@ -201,15 +204,13 @@ aiIsWalkable gs@GameState{..} mType (x, y) =
         x >= 0 && y >= 0 && x < width && y < height &&
         (case (board !! y) !! x of
            Wall -> False
-           Box  -> case mType of -- NÂNG CẤP
-                     Grunt -> False -- Grunt bị chặn
-                     Ghost -> True  -- Ghost đi xuyên
+           Box  -> case mType of
+                     Grunt -> False
+                     Ghost -> True
            _    -> True) &&
-        -- Kiểm tra vật thể
         not (any (\b -> bpos b == (x, y)) bombs) &&
         not (any (\m -> mPos m == (x, y)) monsters)
 
--- 1. Tìm mục tiêu (Giữ nguyên)
 findClosestPlayer :: (Int, Int) -> [Player] -> Maybe (Int, Int)
 findClosestPlayer mPos allPlayers =
   let livingPlayers = filter alive allPlayers
@@ -219,7 +220,6 @@ findClosestPlayer mPos allPlayers =
       []    -> Nothing
       (p:_) -> Just (pos p)
 
--- 2. Thuật toán BFS (NÂNG CẤP: dùng `aiIsWalkable` và `@GameState{..}`)
 findPath :: GameState -> MonsterType -> [(Int, Int)] -> (Int, Int) -> (Int, Int) -> Maybe (Int, Int)
 findPath gs@GameState{..} mType obstacles start end =
   case board of
@@ -228,8 +228,7 @@ findPath gs@GameState{..} mType obstacles start end =
       let
         width = length firstRow
         height = length board
-        isWalkable = aiIsWalkable (gs { monsters = [] }) mType -- Bỏ qua quái vật
-
+        isWalkable = aiIsWalkable (gs { monsters = [] }) mType
         bfs :: Seq ((Int, Int), (Int, Int)) -> Set (Int, Int) -> Maybe (Int, Int)
         bfs queue visited
           | Seq.null queue = Nothing
@@ -251,24 +250,20 @@ findPath gs@GameState{..} mType obstacles start end =
       in
         bfs (Seq.singleton (start, start)) (Set.singleton start)
 
--- NÂNG CẤP: `wander` dùng `aiIsWalkable`
 wander :: GameState -> Monster -> Monster
 wander gs m@(Monster _ (x,y) mType') =
   let
     possibleMoves = [(x, y-1), (x, y+1), (x-1, y), (x+1, y)]
-    -- Dùng logic di chuyển của AI
     validMove = find (aiIsWalkable gs mType') possibleMoves
   in
     case validMove of
-      Nothing -> m -- Bị kẹt hoàn toàn, đứng yên
-      Just pos -> m { mPos = pos } -- Di chuyển "lang thang"
+      Nothing -> m
+      Just pos -> m { mPos = pos }
 
--- NÂNG CẤP: `calculateMonsterMove`
 calculateMonsterMove :: GameState -> Monster -> Monster
 calculateMonsterMove gs m@(Monster _ mPos' mType') =
   let 
     targetPos = findClosestPlayer mPos' (players gs)
-    -- Vật cản (bom, quái vật khác)
     obstacles = (map bpos (bombs gs)) ++ 
                 (map mPos (filter (\m' -> mId m' /= mId m) (monsters gs)))
   in
@@ -295,6 +290,7 @@ tickGame dt rng gs@GameState{..} =
         updatedFlames = map (updateFlameTimer dt) flames `using` parList rseq
         flames' = catMaybes updatedFlames
         
+        -- MỚI: Cập nhật timer người chơi (Chaos)
         playersWithTimers = updatePlayerTimers dt players
 
         -- 2. NỔ DÂY CHUYỀN
@@ -313,18 +309,17 @@ tickGame dt rng gs@GameState{..} =
         -- 4. NÂNG CẤP AI: Tiến hóa
         (evolvedMonsters, newPhaseTimer) =
           if gamePhaseTimer > 0
-          then -- Giai đoạn 1: Đếm ngược
+          then
                let newTimer = gamePhaseTimer - dt
                in if newTimer <= 0
-                  then (map (\m -> m { mType = Ghost }) monsters, 0.0) -- Tiến hóa!
-                  else (monsters, newTimer) -- Tiếp tục đếm
-          else (monsters, 0.0) -- Giai đoạn 2: Giữ nguyên
+                  then (map (\m -> m { mType = Ghost }) monsters, 0.0)
+                  else (monsters, newTimer)
+          else (monsters, 0.0)
         
         -- 5. CẬP NHẬT AI (ĐÃ GIẢM TỐC)
         (monsterMoves, newMonsterTimer) =
           if monsterMoveTimer <= 0
           then
-            -- Tính toán song song dựa trên quái vật đã/chưa tiến hóa
             (map (calculateMonsterMove gs {monsters = evolvedMonsters, players = playersWithTimers}) evolvedMonsters `using` parList rseq, monsterMoveSpeed)
           else
             (evolvedMonsters, monsterMoveTimer - dt) 
@@ -374,7 +369,7 @@ createPowerUps rng (pos:xs) =
       Just p  -> (p : remainingPowerUps, finalRng)
       Nothing -> (remainingPowerUps, finalRng)
 
--- NÂNG CẤP: `updatePlayers` (Xử lý `hasShield`)
+-- NÂNG CẤP: `updatePlayers` (Xử lý BẤT TỬ và KHIÊN)
 updatePlayers :: [Player] -> [(Int, Int)] -> [Monster] -> [Player]
 updatePlayers ps flamePositions monsterPositions =
   map updatePlayer ps
@@ -383,11 +378,14 @@ updatePlayers ps flamePositions monsterPositions =
     isHit p = alive p && (pos p `elem` flamePositions || pos p `elem` monsterPos)
     
     updatePlayer p
-      | isHit p =
-          if hasShield p
-          then p { hasShield = False } -- Mất khiên
-          else p { alive = False }     -- Chết
-      | otherwise = p
+      | isHit p = -- Nếu bị va chạm
+          if chaosTimer p > 0
+          then p -- Đang Chaos -> Bất tử
+          else -- Không Chaos, kiểm tra Khiên
+            if hasShield p
+            then p { hasShield = False } -- Mất khiên
+            else p { alive = False }     -- Chết
+      | otherwise = p -- Không bị va chạm
 
 -- updateBoard (Giữ nguyên)
 updateBoard :: Board -> [(Int, Int)] -> (Board, [(Int, Int)])

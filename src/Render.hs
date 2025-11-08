@@ -9,7 +9,7 @@ import Text.Printf (printf)
 cellSize :: Float
 cellSize = 40
 
--- drawGame (Giữ nguyên)
+-- NÂNG CẤP: Sửa `drawPlayers` (Giờ cần truyền `GameState` đầy đủ)
 drawGame :: GameState -> Picture
 drawGame gs =
   let
@@ -22,7 +22,7 @@ drawGame gs =
           Pictures $
             (concat
               [ [drawBoard b]
-              , drawPlayers h (players gs) (gamePhaseTimer gs) -- Sửa: Truyền timer
+              , drawPlayers h (players gs) -- Truyền toàn bộ GameState
               , drawBombs h (bombs gs)
               , drawFlames h (flames gs)
               , drawPowerUps h (powerups gs)
@@ -37,7 +37,7 @@ drawGame gs =
     
     timerUI = drawGamePhaseTimer (gamePhaseTimer gs)
   in
-    Pictures [gameWorld, timerUI] -- Sửa: Xóa chatUI (lỗi)
+    Pictures [gameWorld, timerUI]
 
 -- drawBoard (Giữ nguyên)
 drawBoard :: Board -> Picture
@@ -56,8 +56,8 @@ drawCell Box   = color (greyN 0.4) $ rectangleSolid cellSize cellSize
 drawCell Empty = color (greyN 0.7) $ rectangleSolid cellSize cellSize
 
 -- NÂNG CẤP: `drawPlayers` (Thêm Khiên và hiệu ứng Chaos)
-drawPlayers :: Int -> [Player] -> Float -> [Picture]
-drawPlayers h ps gameTime =
+drawPlayers :: Int -> [Player] -> [Picture]
+drawPlayers h ps =
   [ translate (fromIntegral x * cellSize)
               (fromIntegral (h - 1 - y) * cellSize)
       $ Pictures
@@ -68,9 +68,11 @@ drawPlayers h ps gameTime =
             -- Nhân vật
           , color col (circleSolid r)
           ]
+  -- Cập nhật pattern match
   | Player pid (x,y) True _ _ hasShield chaosT <- ps
   , let r = cellSize / 3
   , let -- Hiệu ứng Chaos
+        -- Nhấp nháy 10 lần/giây (dựa trên timer)
         chaosColor = if chaosT > 0 && (round (chaosT * 10) `mod` 2 == 0)
                      then yellow -- Nhấp nháy màu vàng
                      else if pid == 1 then red else blue

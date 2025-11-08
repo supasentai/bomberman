@@ -17,7 +17,7 @@ data PowerUpType
   = BombUp
   | FlameUp
   | Shield  -- MỚI: Chặn 1 lần sát thương
-  | Chaos   -- MỚI: Bom nổ nhanh
+  | Chaos   -- MỚI: Bất tử, nổ nhanh, xuyên bom
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 -- PowerUp (Giữ nguyên)
