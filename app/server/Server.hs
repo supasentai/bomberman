@@ -123,7 +123,7 @@ findRandomEmpty rng board n =
       (remainingPos, r'') = findRandomEmpty r' board (n-1)
   in (pos : remainingPos, r'')
 
--- NÂNG CẤP: `initialGameState` (Thêm `hasShield` và `chaosTimer`)
+-- NÂNG CẤP: `initialGameState` (Thêm `iframes = 0.0`)
 initialGameState :: StdGen -> (GameState, StdGen)
 initialGameState rng =
   let (mazeBoard, r1) = generateMaze rng
@@ -133,9 +133,9 @@ initialGameState rng =
       (monsterPos, r3) = findRandomEmpty r2 finalBoard 5 
       monsters = [Monster i pos Grunt | (i, pos) <- zip [1..] monsterPos]
       
-      -- MỚI: Thêm `hasShield = False` và `chaosTimer = 0.0`
-      players = [ Player 1 (1,1) True 1 1 False 0.0
-                , Player 2 (mazeWidth-2, mazeHeight-2) True 1 1 False 0.0 ]
+      -- MỚI: Thêm `iframes = 0.0` (trường cuối cùng)
+      players = [ Player 1 (1,1) True 1 1 False 0.0 0.0
+                , Player 2 (mazeWidth-2, mazeHeight-2) True 1 1 False 0.0 0.0 ]
   in
     (GameState
       { board = finalBoard
@@ -262,6 +262,11 @@ updateFromCommand gs cmd pid
             formattedMsg = "P" ++ show pid ++ ": " ++ msg
         in 
            gs { chatHistory = take 10 (formattedMsg : chatHistory gs) }
+    
+    | "/spawn " `isPrefixOf` cmd =
+        let itemTypeStr = drop 7 cmd
+        in spawnItemNearPlayer pid itemTypeStr gs
+
     | cmd == "w" = movePlayer pid ( 0, -1) gs
     | cmd == "s" = movePlayer pid ( 0,  1) gs
     | cmd == "a" = movePlayer pid (-1,  0) gs

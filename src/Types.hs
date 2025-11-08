@@ -12,12 +12,12 @@ data Cell = Empty | Wall | Box
 
 type Board = [[Cell]]
 
--- NÂNG CẤP: Thêm `Shield` và `Chaos`
+-- PowerUpType (Giữ nguyên)
 data PowerUpType
   = BombUp
   | FlameUp
-  | Shield  -- MỚI: Chặn 1 lần sát thương
-  | Chaos   -- MỚI: Bất tử, nổ nhanh, xuyên bom
+  | Shield
+  | Chaos
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 -- PowerUp (Giữ nguyên)
@@ -26,15 +26,16 @@ data PowerUp = PowerUp
   , pupType :: PowerUpType
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- NÂNG CẤP: Player có thêm `hasShield` và `chaosTimer`
+-- NÂNG CẤP: Player có thêm `iframes`
 data Player = Player
   { playerId    :: Int
   , pos         :: (Int, Int)
   , alive       :: Bool
   , maxBombs    :: Int
   , blastRadius :: Int
-  , hasShield   :: Bool  -- MỚI
-  , chaosTimer  :: Float -- MỚI
+  , hasShield   :: Bool
+  , chaosTimer  :: Float
+  , iframes     :: Float -- MỚI: Khung thời gian bất tử
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 

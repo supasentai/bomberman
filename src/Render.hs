@@ -5,14 +5,17 @@ import Types
 import Debug.Trace
 import Data.List (take)
 import Text.Printf (printf)
+import qualified Data.Map.Strict as Map
+import Data.Map.Strict (Map)
 
 cellSize :: Float
 cellSize = 40
 
--- NÂNG CẤP: Sửa `drawPlayers` (Giờ cần truyền `GameState` đầy đủ)
-drawGame :: GameState -> Picture
-drawGame gs =
+-- NÂNG CẤP: `drawPlayers` (Giờ cần truyền `GameState` đầy đủ)
+drawGame :: GameState -> Map Int (Float, Float) -> Picture
+drawGame gs visualPlayers =
   let
+    -- 1. Vẽ thế giới game
     gameWorld =
       case board gs of
         [] -> Translate 0 0 $ Scale 0.2 0.2 $ Text "Board is empty"
@@ -22,7 +25,7 @@ drawGame gs =
           Pictures $
             (concat
               [ [drawBoard b]
-              , drawPlayers h (players gs) -- Truyền toàn bộ GameState
+              , drawPlayers h (players gs) visualPlayers
               , drawBombs h (bombs gs)
               , drawFlames h (flames gs)
               , drawPowerUps h (powerups gs)
@@ -35,7 +38,9 @@ drawGame gs =
             w' = fromIntegral w * cellSize
             h' = fromIntegral h * cellSize
     
+    -- 2. Vẽ Timer
     timerUI = drawGamePhaseTimer (gamePhaseTimer gs)
+  
   in
     Pictures [gameWorld, timerUI]
 
@@ -55,28 +60,30 @@ drawCell Wall  = color (greyN 0.2) $ rectangleSolid cellSize cellSize
 drawCell Box   = color (greyN 0.4) $ rectangleSolid cellSize cellSize
 drawCell Empty = color (greyN 0.7) $ rectangleSolid cellSize cellSize
 
--- NÂNG CẤP: `drawPlayers` (Thêm Khiên và hiệu ứng Chaos)
-drawPlayers :: Int -> [Player] -> [Picture]
-drawPlayers h ps =
-  [ translate (fromIntegral x * cellSize)
-              (fromIntegral (h - 1 - y) * cellSize)
+-- NÂNG CẤP: `drawPlayers` (Thêm hiệu ứng `iframes`)
+drawPlayers :: Int -> [Player] -> Map Int (Float, Float) -> [Picture]
+drawPlayers h ps visualPlayers =
+  [ 
+    translate (visualX * cellSize) (fromIntegral (h - 1) * cellSize - visualY * cellSize)
       $ Pictures
-          [ -- Bóng
-            color (dark (greyN 0.1)) (translate 3 (-3) (circleSolid r))
-            -- Khiên
+          [ color (dark (greyN 0.1)) (translate 3 (-3) (circleSolid r))
           , if hasShield then color (makeColor 1 1 1 0.3) (circleSolid (r*1.5)) else Blank
-            -- Nhân vật
           , color col (circleSolid r)
           ]
   -- Cập nhật pattern match
-  | Player pid (x,y) True _ _ hasShield chaosT <- ps
+  | p@(Player pid _ True _ _ hasShield chaosT iframesT) <- ps
   , let r = cellSize / 3
-  , let -- Hiệu ứng Chaos
-        -- Nhấp nháy 10 lần/giây (dựa trên timer)
-        chaosColor = if chaosT > 0 && (round (chaosT * 10) `mod` 2 == 0)
-                     then yellow -- Nhấp nháy màu vàng
+  , let 
+        (visualX, visualY) = Map.findWithDefault (fromIntegral $ fst (pos p), fromIntegral $ snd (pos p)) pid visualPlayers
+        
+        -- MỚI: Kiểm tra Bất tử (Chaos HOẶC Iframes)
+        isInvincible = chaosT > 0 || iframesT > 0
+        
+        -- Nhấp nháy nếu Bất tử
+        blinkColor = if isInvincible && (round (iframesT * 10 + chaosT * 10) `mod` 2 == 0)
+                     then yellow
                      else if pid == 1 then red else blue
-        col = chaosColor
+        col = blinkColor
   ]
 
 -- drawBombs (Giữ nguyên)
@@ -101,7 +108,7 @@ drawFlames h fs =
   , let alpha = max 0 (r / 1.5)
   ]
 
--- NÂNG CẤP: `drawPowerUps` (Thêm màu)
+-- drawPowerUps (Giữ nguyên)
 drawPowerUps :: Int -> [PowerUp] -> [Picture]
 drawPowerUps h pups =
   [ translate (fromIntegral x * cellSize) 
@@ -138,7 +145,7 @@ drawStatus (GameOver 1) (w, h) = centerText w h "PLAYER 1 WINS!"
 drawStatus (GameOver 2) (w, h) = centerText w h "PLAYER 2 WINS!"
 drawStatus (GameOver pid) (w, h) = centerText w h ("PLAYER " ++ show pid ++ " WINS!")
 
--- centerText (Giữ nguyên)
+-- centerText (GiGữ nguyên)
 centerText :: Int -> Int -> String -> Picture
 centerText boardWidth boardHeight msg =
   let

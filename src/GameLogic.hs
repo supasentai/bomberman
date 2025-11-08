@@ -26,14 +26,16 @@ powerUpSpawnChance :: Float
 powerUpSpawnChance = 0.5
 monsterMoveSpeed :: Float
 monsterMoveSpeed = 0.5 
-
--- MỚI: Cấu hình cho Chaos Mode
 chaosDuration :: Float
-chaosDuration = 10.0 -- 10 giây
+chaosDuration = 10.0
 chaosBombTimer :: Float
-chaosBombTimer = 0.5 -- 0.5 giây
+chaosBombTimer = 0.5 
 
--- NÂNG CẤP: `canMove` (Thêm logic "Đi xuyên bom" cho Chaos)
+-- MỚI: Cấu hình cho Khiên
+invincibilityDuration :: Float
+invincibilityDuration = 1.0 -- 1 giây bất tử sau khi khiên vỡ
+
+-- canMove (Giữ nguyên)
 canMove :: GameState -> Player -> (Int, Int) -> Bool
 canMove gs@GameState{..} p (x, y) =
   case board of
@@ -49,23 +51,20 @@ canMove gs@GameState{..} p (x, y) =
                           Wall -> True
                           Box  -> True
                           _    -> False
-          
-          -- NÂNG CẤP: Logic "Đi xuyên bom"
           bombAtPos = any (\b -> bpos b == (x, y)) bombs
-          isBlockedByBomb = bombAtPos && (chaosTimer p <= 0) -- Bị chặn NẾU không chaos
-
+          isBlockedByBomb = bombAtPos && (chaosTimer p <= 0)
           monsterAtPos = any (\m -> mPos m == (x, y)) monsters
         in 
           not isWallOrBox && not isBlockedByBomb && not monsterAtPos
 
--- NÂNG CẤP: `applyPowerUp` (Thêm `Shield` và `Chaos`)
+-- applyPowerUp (Giữ nguyên)
 applyPowerUp :: Player -> PowerUpType -> Player
 applyPowerUp p BombUp  = p { maxBombs = maxBombs p + 1 }
 applyPowerUp p FlameUp = p { blastRadius = blastRadius p + 1 }
 applyPowerUp p Shield  = p { hasShield = True }
 applyPowerUp p Chaos   = p { chaosTimer = chaosDuration }
 
--- NÂNG CẤP: `movePlayer` (Cập nhật pattern match và gọi `canMove`)
+-- movePlayer (Giữ nguyên)
 movePlayer :: Int -> (Int, Int) -> GameState -> GameState
 movePlayer pid (dx, dy) gs@GameState{..} =
   let (collectedAnything', ps') = mapAccumL updatePlayer False players
@@ -73,7 +72,7 @@ movePlayer pid (dx, dy) gs@GameState{..} =
   in
     case find (\p -> playerId p == pid) ps' of
       Nothing -> gs'
-      Just (Player _ newPos _ _ _ _ _) -> -- Sửa pattern match
+      Just (Player _ newPos _ _ _ _ _ _) -> -- Sửa pattern match
         if collectedAnything'
         then gs' { powerups = filter (\p -> pupPos p /= newPos) powerups }
         else gs'
@@ -85,7 +84,7 @@ movePlayer pid (dx, dy) gs@GameState{..} =
           let (x, y) = pos p
               newPos = (x + dx, y + dy)
           in 
-             if canMove gs p newPos -- Truyền `p`
+             if canMove gs p newPos
              then 
                   let p' = p { pos = newPos }
                       mPowerUp = find (\pu -> pupPos pu == newPos) powerups
@@ -95,7 +94,7 @@ movePlayer pid (dx, dy) gs@GameState{..} =
              else (collected, p)
       | otherwise = (collected, p)
 
--- NÂNG CẤP: `dropBomb` (Kiểm tra `chaosTimer`)
+-- dropBomb (Giữ nguyên)
 dropBomb :: Int -> GameState -> GameState
 dropBomb pid gs@GameState{..} =
   case find (\p -> playerId p == pid && alive p) players of
@@ -103,10 +102,9 @@ dropBomb pid gs@GameState{..} =
     Just p ->
       let (x, y) = pos p
           myBombs = length [b | b <- bombs, bOwner b == pid]
-          -- MỚI: Quyết định timer
           bombTimer = if chaosTimer p > 0
-                      then chaosBombTimer -- Nổ nhanh
-                      else bombDefaultTimer -- Nổ thường
+                      then chaosBombTimer
+                      else bombDefaultTimer
       in 
         if myBombs < maxBombs p
         then gs { bombs = Bomb (x, y) bombTimer (blastRadius p) pid : bombs }
@@ -124,6 +122,34 @@ safeGetCell b (x, y) =
         if x < 0 || y < 0 || x >= width || y >= height
         then Nothing
         else Just ((b !! y) !! x)
+        
+-- spawnItemNearPlayer (Giữ nguyên)
+spawnItemNearPlayer :: Int -> String -> GameState -> GameState
+spawnItemNearPlayer pid itemStr gs@GameState{..} =
+  let mItemType = case itemStr of
+                    "bombup"  -> Just BombUp
+                    "flameup" -> Just FlameUp
+                    "shield"  -> Just Shield
+                    "chaos"   -> Just Chaos
+                    _         -> Nothing
+      mPlayer = find (\p -> playerId p == pid) players
+  in
+    case (mItemType, mPlayer) of
+      (Just itemType, Just p) ->
+        let (x, y) = pos p
+            spots = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
+            isSpotFree (sx, sy) =
+              case safeGetCell board (sx, sy) of
+                Just Empty -> not (any (\pu -> pupPos pu == (sx, sy)) powerups)
+                _          -> False
+            mValidSpot = find isSpotFree spots
+        in
+          case mValidSpot of
+            Nothing -> gs
+            Just spot -> 
+              let newPowerUp = PowerUp spot itemType
+              in gs { powerups = newPowerUp : powerups }
+      _ -> gs
 
 -- getFlamesInDir (Giữ nguyên)
 getFlamesInDir :: Board -> (Int, Int) -> (Int, Int) -> Int -> [Flame]
@@ -182,15 +208,22 @@ updateFlameTimer dt f =
   let r = remain f - dt
   in if r > 0 then Just (f { remain = r }) else Nothing
 
--- HÀM MỚI: Cập nhật timer cho người chơi (Chaos mode)
+-- NÂNG CẤP: `updatePlayerTimers` (Thêm `iframes`)
 updatePlayerTimers :: Float -> [Player] -> [Player]
 updatePlayerTimers dt = map update
   where
-    update p
-      | chaosTimer p > 0 =
-          let newTimer = chaosTimer p - dt
-          in p { chaosTimer = if newTimer < 0 then 0 else newTimer }
-      | otherwise = p
+    update p = 
+      let 
+        -- Đếm ngược Chaos
+        newChaos = if chaosTimer p > 0
+                   then max 0 (chaosTimer p - dt)
+                   else 0
+        -- Đếm ngược iframes
+        newIframes = if iframes p > 0
+                     then max 0 (iframes p - dt)
+                     else 0
+      in
+        p { chaosTimer = newChaos, iframes = newIframes }
 
 -- ========== LOGIC AI TÌM ĐƯỜNG (Giữ nguyên) ==========
 aiIsWalkable :: GameState -> MonsterType -> (Int, Int) -> Bool
@@ -276,7 +309,7 @@ calculateMonsterMove gs m@(Monster _ mPos' mType') =
 -- ========== KẾT THÚC LOGIC AI ==========
 
 
--- NÂNG CẤP: tickGame (Thêm `updatePlayerTimers`)
+-- NÂNG CẤP: tickGame (Thứ tự thực thi)
 tickGame :: Float -> StdGen -> GameState -> (GameState, StdGen)
 tickGame dt rng gs@GameState{..} =
   case status of
@@ -290,9 +323,6 @@ tickGame dt rng gs@GameState{..} =
         updatedFlames = map (updateFlameTimer dt) flames `using` parList rseq
         flames' = catMaybes updatedFlames
         
-        -- MỚI: Cập nhật timer người chơi (Chaos)
-        playersWithTimers = updatePlayerTimers dt players
-
         -- 2. NỔ DÂY CHUYỀN
         (explodingBombs, remainingBombs) = 
             partition (\b -> timer b - dt <= 0) bombsToKeep
@@ -320,7 +350,7 @@ tickGame dt rng gs@GameState{..} =
         (monsterMoves, newMonsterTimer) =
           if monsterMoveTimer <= 0
           then
-            (map (calculateMonsterMove gs {monsters = evolvedMonsters, players = playersWithTimers}) evolvedMonsters `using` parList rseq, monsterMoveSpeed)
+            (map (calculateMonsterMove gs {monsters = evolvedMonsters, players = players}) evolvedMonsters `using` parList rseq, monsterMoveSpeed)
           else
             (evolvedMonsters, monsterMoveTimer - dt) 
         
@@ -328,7 +358,11 @@ tickGame dt rng gs@GameState{..} =
         survivingMonsters = filter (\m -> mPos m `notElem` flamePositions) monsterMoves
         
         -- 7. CẬP NHẬT NGƯỜI CHƠI (Xử lý chết)
-        newPlayers = updatePlayers playersWithTimers flamePositions survivingMonsters
+        playersAfterHits = updatePlayers players flamePositions survivingMonsters
+        
+        -- 8. CẬP NHẬT TIMERS (SAU KHI ĐÃ NHẶT ĐỒ/CHẾT)
+        newPlayers = updatePlayerTimers dt playersAfterHits
+        
         livingPlayers = filter alive newPlayers
         newStatus = checkGameStatus livingPlayers
 
@@ -345,17 +379,14 @@ tickGame dt rng gs@GameState{..} =
       in
         (gs', newRng)
 
--- NÂNG CẤP: `createPowerUps` (Thêm `Shield` và `Chaos`)
+-- NÂNG CẤP: `createPowerUps` (Giữ nguyên)
 createPowerUps :: StdGen -> [(Int, Int)] -> ([PowerUp], StdGen)
 createPowerUps rng [] = ([], rng)
 createPowerUps rng (pos:xs) =
   let
     (roll, rng') = randomR (0.0, 1.0) rng
-    -- MỚI: Random 4 loại vật phẩm
     (pTypeIdx, rng'') = randomR (0 :: Int, 3 :: Int) rng'
-    
     (remainingPowerUps, finalRng) = createPowerUps rng'' xs
-    
     thisPowerUp = if roll < powerUpSpawnChance
                   then let pType = case pTypeIdx of
                                      0 -> BombUp
@@ -369,7 +400,7 @@ createPowerUps rng (pos:xs) =
       Just p  -> (p : remainingPowerUps, finalRng)
       Nothing -> (remainingPowerUps, finalRng)
 
--- NÂNG CẤP: `updatePlayers` (Xử lý BẤT TỬ và KHIÊN)
+-- NÂNG CẤP: `updatePlayers` (Logic bất tử/khiên hoàn chỉnh)
 updatePlayers :: [Player] -> [(Int, Int)] -> [Monster] -> [Player]
 updatePlayers ps flamePositions monsterPositions =
   map updatePlayer ps
@@ -379,12 +410,12 @@ updatePlayers ps flamePositions monsterPositions =
     
     updatePlayer p
       | isHit p = -- Nếu bị va chạm
-          if chaosTimer p > 0
-          then p -- Đang Chaos -> Bất tử
-          else -- Không Chaos, kiểm tra Khiên
+          if iframes p > 0 || chaosTimer p > 0
+          then p -- Bất tử (từ Chaos hoặc iframes)
+          else -- Không bất tử, kiểm tra Khiên
             if hasShield p
-            then p { hasShield = False } -- Mất khiên
-            else p { alive = False }     -- Chết
+            then p { hasShield = False, iframes = invincibilityDuration } -- Mất khiên, BẬT iframes
+            else p { alive = False } -- Chết
       | otherwise = p -- Không bị va chạm
 
 -- updateBoard (Giữ nguyên)
