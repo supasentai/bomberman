@@ -17,16 +17,13 @@ import qualified Data.Sequence as Seq
 import Data.Sequence (Seq, (|>), ViewL(..))
 import Data.Foldable (toList)
 
--- Cấu hình
+-- Cấu hình (Giữ nguyên)
 bombDefaultTimer :: Float
 bombDefaultTimer = 3.0
 flameDuration :: Float
 flameDuration = 0.8
 powerUpSpawnChance :: Float
 powerUpSpawnChance = 0.5
-
--- MỚI: Tốc độ di chuyển của quái vật (giây)
--- (0.5 = 1 lần mỗi 0.5 giây = 2 ô/giây)
 monsterMoveSpeed :: Float
 monsterMoveSpeed = 0.5 
 
@@ -167,7 +164,9 @@ updateFlameTimer dt f =
   let r = remain f - dt
   in if r > 0 then Just (f { remain = r }) else Nothing
 
--- LOGIC AI TÌM ĐƯỜNG (Giữ nguyên)
+-- ========== LOGIC AI TÌM ĐƯỜNG (ĐÃ NÂNG CẤP) ==========
+
+-- 1. Tìm mục tiêu (Giữ nguyên)
 findClosestPlayer :: (Int, Int) -> [Player] -> Maybe (Int, Int)
 findClosestPlayer mPos allPlayers =
   let livingPlayers = filter alive allPlayers
@@ -177,6 +176,7 @@ findClosestPlayer mPos allPlayers =
       []    -> Nothing
       (p:_) -> Just (pos p)
 
+-- 2. Thuật toán BFS (Giữ nguyên)
 findPath :: Board -> [(Int, Int)] -> (Int, Int) -> (Int, Int) -> Maybe (Int, Int)
 findPath board obstacles start end =
   case board of
@@ -215,6 +215,24 @@ findPath board obstacles start end =
       in
         bfs (Seq.singleton (start, start)) (Set.singleton start)
 
+-- HÀM MỚI: Logic "Lang thang" (Wander)
+-- Thử di chuyển 4 hướng theo thứ tự
+wander :: GameState -> Monster -> Monster
+wander gs m =
+  let
+    (x, y) = mPos m
+    -- Thử 4 hướng theo thứ tự ưu tiên
+    possibleMoves = [(x, y-1), (x, y+1), (x-1, y), (x+1, y)]
+    
+    -- Lấy hướng đi hợp lệ đầu tiên
+    -- `canMove` sẽ tự động kiểm tra (tường, bom, quái vật khác)
+    validMove = find (canMove gs) possibleMoves
+  in
+    case validMove of
+      Nothing -> m -- Bị kẹt hoàn toàn, đứng yên
+      Just pos -> m { mPos = pos } -- Di chuyển "lang thang"
+
+-- NÂNG CẤP: `calculateMonsterMove` giờ sẽ "lang thang"
 calculateMonsterMove :: GameState -> Monster -> Monster
 calculateMonsterMove gs m =
   let 
@@ -224,15 +242,18 @@ calculateMonsterMove gs m =
                 (map mPos (filter (\m' -> mId m' /= mId m) (monsters gs)))
   in
     case targetPos of
-      Nothing -> m
+      -- SỬA: Nếu không có người chơi, đi lang thang
+      Nothing -> wander gs m
       Just target ->
+        -- Tính toán (tác vụ nặng)
         case findPath (board gs) obstacles mPos' target of
-          Nothing -> m
-          Just nextStep -> m { mPos = nextStep }
+          -- SỬA: Nếu không tìm thấy đường, đi lang thang
+          Nothing -> wander gs m
+          Just nextStep -> m { mPos = nextStep } -- Có đường, di chuyển
 -- ========== KẾT THÚC LOGIC AI ==========
 
 
--- NÂNG CẤP: tickGame giờ kiểm tra `monsterMoveTimer`
+-- NÂNG CẤP: tickGame (Giữ nguyên từ lần trước)
 tickGame :: Float -> StdGen -> GameState -> (GameState, StdGen)
 tickGame dt rng gs@GameState{..} =
   case status of
@@ -260,20 +281,18 @@ tickGame dt rng gs@GameState{..} =
         allPowerUps = powerups ++ newPowerUps
         
         -- 4. CẬP NHẬT AI (ĐÃ GIẢM TỐC)
-        (newMonsters, newMonsterTimer) =
+        (monsterMoves, newMonsterTimer) =
           if monsterMoveTimer <= 0
           then
-            -- Timer đã hết, TÍNH TOÁN LẠI (SONG SONG)
-            let 
-              aiMoves = map (calculateMonsterMove gs) monsters `using` parList rseq
-            in
-              (aiMoves, monsterMoveSpeed) -- Reset timer
+            (map (calculateMonsterMove gs) monsters `using` parList rseq, monsterMoveSpeed)
           else
-            -- Timer chưa hết, KHÔNG TÍNH TOÁN, chỉ giảm timer
             (monsters, monsterMoveTimer - dt) 
         
-        -- 5. CẬP NHẬT NGƯỜI CHƠI VÀ TRẠNG THÁI
-        newPlayers = updatePlayers players flamePositions newMonsters
+        -- 5. LỌC QUÁI VẬT SỐNG SÓT
+        survivingMonsters = filter (\m -> mPos m `notElem` flamePositions) monsterMoves
+        
+        -- 6. CẬP NHẬT NGƯỜI CHƠI VÀ TRẠNG THÁI
+        newPlayers = updatePlayers players flamePositions survivingMonsters
         livingPlayers = filter alive newPlayers
         newStatus = checkGameStatus livingPlayers
 
@@ -283,8 +302,8 @@ tickGame dt rng gs@GameState{..} =
                    flames   = allFlames, 
                    powerups = allPowerUps,
                    status   = newStatus,
-                   monsters = newMonsters,
-                   monsterMoveTimer = newMonsterTimer -- Cập nhật timer
+                   monsters = survivingMonsters,
+                   monsterMoveTimer = newMonsterTimer
                  }
       in
         (gs', newRng)
