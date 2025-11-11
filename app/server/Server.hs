@@ -32,8 +32,8 @@ dt = fromIntegral tickDelay / 1000000.0
 -- ========== LOGIC TẠO MÊ CUNG (Giữ nguyên) ==========
 mazeWidth :: Int
 mazeHeight :: Int
-mazeWidth = 21
-mazeHeight = 21
+mazeWidth = 15
+mazeHeight = 15
 
 getNeighbors :: (Int, Int) -> Set (Int, Int) -> [(Int, Int)]
 getNeighbors (x, y) visited =
@@ -43,7 +43,12 @@ getNeighbors (x, y) visited =
                         not (Set.member (nx, ny) visited)) potential
 
 wallBetween :: (Int, Int) -> (Int, Int) -> (Int, Int)
-wallBetween (x1, y1) (x2, y2) = ((x1 + x2) `div` 2, (y1 + y2) `div` 2)
+wallBetween (x1, y1) (x2, y2)
+  | x1 == x2 = (x1, y1 + sign (y2 - y1) * 1)  -- Giữa: bước 1
+  | y1 == y2 = (x1 + sign (x2 - x1) * 1, y1)
+  | otherwise = error "wallBetween: not aligned"
+  where
+    sign z = if z > 0 then 1 else -1
 
 updateBoardCell :: Board -> (Int, Int) -> Cell -> Board
 updateBoardCell b (x, y) cell =
@@ -130,7 +135,7 @@ initialGameState rng =
       (boxedBoard, r2) = sprinkleBoxes r1 mazeBoard
       finalBoard = createSafeZone boxedBoard 
       
-      (monsterPos, r3) = findRandomEmpty r2 finalBoard 5 
+      (monsterPos, r3) = findRandomEmpty r2 finalBoard 2 
       monsters = [Monster i pos Grunt | (i, pos) <- zip [1..] monsterPos]
       
       -- MỚI: Thêm `iframes = 0.0` (trường cuối cùng)

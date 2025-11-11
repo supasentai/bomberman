@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 module Render where
 
 import Graphics.Gloss
@@ -7,7 +8,7 @@ import Data.List (take)
 import Text.Printf (printf)
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
-
+import Types (PlayerStatus(..))
 cellSize :: Float
 cellSize = 40
 
@@ -38,11 +39,18 @@ drawGame gs visualPlayers =
             w' = fromIntegral w * cellSize
             h' = fromIntegral h * cellSize
     
-    -- 2. Vẽ Timer
+    -- 2. MỚI: Vẽ trạng thái 2 players
+    playerStatuses = 
+      [ drawPlayerStatus w h p 
+      | p <- take 2 (players gs)
+      , let w = length (head (board gs))
+            h = length (board gs)
+      ]
+    -- 3. Vẽ Timer
     timerUI = drawGamePhaseTimer (gamePhaseTimer gs)
   
   in
-    Pictures [gameWorld, timerUI]
+    Pictures [gameWorld, Pictures playerStatuses, timerUI]
 
 -- drawBoard (Giữ nguyên)
 drawBoard :: Board -> Picture
@@ -194,3 +202,57 @@ drawChatInput isTyping buffer =
   if isTyping
   then Text ("> " ++ take 45 buffer ++ (if length buffer > 45 then "..." else "") ++ "_")
   else Text "[Enter để chat]"
+
+getPlayerStatus :: Player -> PlayerStatus
+getPlayerStatus p@Player{iframes, chaosTimer, hasShield, blastRadius} =
+  if iframes > 0
+    then PIframe iframes
+    else if chaosTimer > 0
+      then PChaos chaosTimer
+      else if hasShield
+        then PShield
+        else PRadius blastRadius
+
+-- Thêm hàm drawPlayerStatus
+drawPlayerStatus :: Int -> Int -> Player -> Picture
+drawPlayerStatus boardWidth boardHeight p =
+  let
+    status = getPlayerStatus p
+    pidStr = "P" ++ show (playerId p)
+    statusText = case status of
+      PNormal      -> "NORMAL"
+      PRadius r    -> printf "RADIUS: %d" r
+      PShield      -> "SHIELD"
+      PChaos t     -> printf "CHAOS: %.1f" t
+      PIframe t    -> printf "INVULN: %.1f" t
+    
+    -- Kích thước FIXED - nhỏ gọn + cân đối
+    boxWidth  = 190  -- ← FIXED
+    boxHeight = 70   -- ← FIXED
+    
+    -- Vị trí CHÍNH GIỮA TRÊN CÙNG
+    scaledWidth  = fromIntegral boardWidth  * cellSize * 0.6
+    scaledHeight = fromIntegral boardHeight * cellSize * 0.6
+    centerX      = scaledWidth / 2  -180        -- = 180px
+    topY         = scaledHeight / 2 + 35    -- Trên board 35px
+    
+    -- P1 trái (-95px), P2 phải (+95px) → TỔNG 190px (cân đối)
+    offsetX = if playerId p == 1 then -95 else 95
+    finalX  = centerX + offsetX
+    finalY  = topY
+    
+    -- Background + viền
+    bg      = color (makeColor 0 0 0 0.9) $ rectangleSolid boxWidth boxHeight
+    border  = color white $ rectangleWire (boxWidth+2) (boxHeight+2)
+    
+    playerColor = if playerId p == 1 then red else blue
+    
+    -- ICON ● CĂN GIỮA HOÀN HẢO (x = -55)
+    icon     = translate (-55) 2  $ color playerColor $ circleSolid 18
+    
+    -- TEXT CĂN CHUẨN (icon ● + text sát nhau)
+    pidPic    = translate (-28) 10  $ scale 0.22 0.22 $ color white $ Text pidStr
+    statusPic = translate (-28) (-20) $ scale 0.16 0.16 $ color yellow $ Text statusText
+    
+  in
+    Translate finalX finalY $ Pictures [bg, border, icon, pidPic, statusPic]

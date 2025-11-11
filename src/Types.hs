@@ -83,3 +83,11 @@ data GameState = GameState
   , monsterMoveTimer :: Float
   , gamePhaseTimer   :: Float
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+data PlayerStatus
+  = PNormal
+  | PRadius Int
+  | PShield
+  | PChaos Float
+  | PIframe Float
+  deriving (Show, Eq, Generic, ToJSON, FromJSON)
