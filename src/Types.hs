@@ -26,7 +26,7 @@ data PowerUp = PowerUp
   , pupType :: PowerUpType
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- NÂNG CẤP: Player có thêm `iframes`
+-- NÂNG CẤP: Player (9 trường)
 data Player = Player
   { playerId    :: Int
   , pos         :: (Int, Int)
@@ -36,6 +36,7 @@ data Player = Player
   , hasShield   :: Bool
   , chaosTimer  :: Float
   , iframes     :: Float -- MỚI: Khung thời gian bất tử
+  , isAI        :: Bool  -- MỚI: Dành cho chế độ 1v1
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 
@@ -58,6 +59,7 @@ data GameStatus
   = Playing
   | GameOver Int
   | Draw
+  | Lobby
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 -- Monster (Giữ nguyên)
@@ -70,16 +72,17 @@ data Monster = Monster
   , mType :: MonsterType
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- GameState (Giữ nguyên)
+-- GameState (NÂNG CẤP: 11 trường)
 data GameState = GameState
-  { board            :: Board
-  , players          :: [Player]
-  , bombs            :: [Bomb]
-  , flames           :: [Flame]
-  , powerups         :: [PowerUp]
-  , status           :: GameStatus
-  , chatHistory      :: [String]
-  , monsters         :: [Monster]
-  , monsterMoveTimer :: Float
-  , gamePhaseTimer   :: Float
+  { board              :: Board
+  , players            :: [Player]
+  , bombs              :: [Bomb]
+  , flames             :: [Flame]
+  , powerups           :: [PowerUp]
+  , status             :: GameStatus
+  , chatHistory        :: [String]
+  , monsters           :: [Monster]
+  , monsterMoveTimer   :: Float
+  , gamePhaseTimer     :: Float
+  , playerAIMoveTimer  :: Float 
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)

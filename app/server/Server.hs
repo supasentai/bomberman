@@ -123,9 +123,9 @@ findRandomEmpty rng board n =
       (remainingPos, r'') = findRandomEmpty r' board (n-1)
   in (pos : remainingPos, r'')
 
--- NÂNG CẤP: `initialGameState` (Thêm `iframes = 0.0`)
-initialGameState :: StdGen -> (GameState, StdGen)
-initialGameState rng =
+-- NÂNG CẤP: `createCoopGame` (Player có 9 trường, GameState có 11)
+createCoopGame :: StdGen -> (GameState, StdGen)
+createCoopGame rng =
   let (mazeBoard, r1) = generateMaze rng
       (boxedBoard, r2) = sprinkleBoxes r1 mazeBoard
       finalBoard = createSafeZone boxedBoard 
@@ -133,9 +133,9 @@ initialGameState rng =
       (monsterPos, r3) = findRandomEmpty r2 finalBoard 5 
       monsters = [Monster i pos Grunt | (i, pos) <- zip [1..] monsterPos]
       
-      -- MỚI: Thêm `iframes = 0.0` (trường cuối cùng)
-      players = [ Player 1 (1,1) True 1 1 False 0.0 0.0
-                , Player 2 (mazeWidth-2, mazeHeight-2) True 1 1 False 0.0 0.0 ]
+      players = [ Player 1 (1,1) True 1 1 False 0.0 0.0 False 
+                , Player 2 (mazeWidth-2, mazeHeight-2) True 1 1 False 0.0 0.0 False
+                ]
   in
     (GameState
       { board = finalBoard
@@ -148,7 +148,52 @@ initialGameState rng =
       , monsters = monsters
       , monsterMoveTimer = 0.0
       , gamePhaseTimer = 30.0
+      , playerAIMoveTimer = 0.0 -- MỚI
       }, r3)
+
+-- NÂNG CẤP: `create1v1Game` (GameState có 11 trường)
+create1v1Game :: StdGen -> (GameState, StdGen)
+create1v1Game rng =
+  let (mazeBoard, r1) = generateMaze rng
+      (boxedBoard, r2) = sprinkleBoxes r1 mazeBoard
+      finalBoard = createSafeZone boxedBoard 
+      
+      (monsterPos, r3) = findRandomEmpty r2 finalBoard 5 
+      monsters = [Monster i pos Grunt | (i, pos) <- zip [1..] monsterPos]
+      
+      players = [ Player 1 (1,1) True 1 1 False 0.0 0.0 False 
+                , Player 2 (mazeWidth-2, mazeHeight-2) True 1 1 False 0.0 0.0 True
+                ]
+  in
+    (GameState
+      { board = finalBoard
+      , players = players
+      , bombs = []
+      , flames = []
+      , powerups = []
+      , status = Playing
+      , chatHistory = []
+      , monsters = monsters
+      , monsterMoveTimer = 0.0
+      , gamePhaseTimer = 30.0
+      , playerAIMoveTimer = 0.0 -- MỚI
+      }, r3)
+
+-- NÂNG CẤP: `lobbyGameState` (Giờ có 11 trường)
+lobbyGameState :: GameState
+lobbyGameState = GameState
+  { board = [[]]
+  , players = []
+  , bombs = []
+  , flames = []
+  , powerups = []
+  , status = Lobby
+  , chatHistory = []
+  , monsters = []
+  , monsterMoveTimer = 0.0
+  , gamePhaseTimer = 0.0
+  , playerAIMoveTimer = 0.0 -- MỚI
+  }
 -- ========== KẾT THÚC LOGIC MÊ CUNG ==========
 
 main :: IO ()
@@ -166,12 +211,10 @@ runServer = withSocketsDo $ do
       listen sock 2
       putStrLn "🔥 Server started at port 4242"
       
-      initRng <- newStdGen
-      let (gs0, rng1) = initialGameState initRng
-      stateVar   <- newTVarIO gs0
+      stateVar   <- newTVarIO lobbyGameState
       clientsVar <- newTVarIO []
       playerCounter <- newIORef 1
-      rngVar     <- newTVarIO rng1
+      rngVar     <- newTVarIO =<< newStdGen
 
       _ <- forkIO $ gameLoop stateVar clientsVar rngVar
 
@@ -188,9 +231,9 @@ runServer = withSocketsDo $ do
         gs0_current <- readTVarIO stateVar
         BL.hPutStrLn h (encode gs0_current)
 
-        forkIO $ clientHandler h stateVar clientsVar pid
+        forkIO $ clientHandler h stateVar clientsVar rngVar pid -- Sửa: Thêm rngVar
 
--- gameLoop (Giữ nguyên)
+-- NÂNG CẤP: `gameLoop` (Reset về Lobby)
 gameLoop :: TVar GameState -> TVar [Handle] -> TVar StdGen -> IO ()
 gameLoop stateVar clientsVar rngVar = forever $ do
   threadDelay tickDelay
@@ -198,7 +241,9 @@ gameLoop stateVar clientsVar rngVar = forever $ do
   (newGs, oldStatus) <- atomically $ do
     currentGs <- readTVar stateVar
     currentRng <- readTVar rngVar
-    let (newGs, newRng) = tickGame dt currentRng currentGs
+    let (newGs, newRng) = if status currentGs == Playing
+                          then tickGame dt currentRng currentGs
+                          else (currentGs, currentRng)
     writeTVar stateVar newGs
     writeTVar rngVar newRng
     return (newGs, status currentGs)
@@ -213,15 +258,10 @@ gameLoop stateVar clientsVar rngVar = forever $ do
     _ -> return ()
   where
     resetGame msg = do
-      putStrLn $ msg ++ "! Resetting in 5 seconds..."
+      putStrLn $ msg ++ "! Resetting to Lobby in 5 seconds..."
       threadDelay 5000000
-      newRng <- atomically $ do
-                  r <- readTVar rngVar
-                  let (newGs, r') = initialGameState r
-                  writeTVar stateVar newGs
-                  writeTVar rngVar r'
-                  return r'
-      putStrLn "Game reset! New maze generated."
+      atomically $ writeTVar stateVar lobbyGameState
+      putStrLn "Game reset! Returned to Lobby."
 
 -- broadcast (Giữ nguyên)
 broadcast :: [Handle] -> GameState -> IO [Handle]
@@ -234,19 +274,42 @@ broadcast handles gs = do
           (\e -> let _ = e :: IOException in return Nothing)
   return (catMaybes results)
 
--- clientHandler (Giữ nguyên)
-clientHandler :: Handle -> TVar GameState -> TVar [Handle] -> Int -> IO ()
-clientHandler h stateVar clientsVar pid =
+-- NÂNG CẤP: `clientHandler` (Thêm `rngVar`)
+clientHandler :: Handle -> TVar GameState -> TVar [Handle] -> TVar StdGen -> Int -> IO ()
+clientHandler h stateVar clientsVar rngVar pid =
   handle (disconnectHandler h clientsVar) $
     forever $ do
       line <- hGetLine h
-      newGs <- atomically $ do
-          gs <- readTVar stateVar
-          let gs' = updateFromCommand gs line pid
-          writeTVar stateVar gs'
-          return gs'
-      catch (BL.hPutStrLn h (encode newGs))
-            (\e -> let _ = e :: IOException in return ())
+      if "/mode " `isPrefixOf` line
+      then do
+        let mode = drop 6 line
+        -- Lấy rng MỚI khi tạo game
+        (newGs, newRng) <- atomically $ do
+          r <- readTVar rngVar
+          let (newGs, r') = if mode == "coop"
+                            then createCoopGame r
+                            else create1v1Game r
+          writeTVar stateVar newGs
+          writeTVar rngVar r'
+          return (newGs, r')
+          
+        putStrLn $ "Player " ++ show pid ++ " started game mode: " ++ mode
+        -- Cần broadcast game MỚI cho TẤT CẢ client
+        handles <- readTVarIO clientsVar
+        newHandles <- broadcast handles newGs
+        atomically $ writeTVar clientsVar newHandles
+        
+      else do
+        newGs <- atomically $ do
+            gs <- readTVar stateVar
+            -- Chỉ cho phép lệnh game nếu đang Playing
+            let gs' = if status gs == Playing
+                      then updateFromCommand gs line pid
+                      else gs
+            writeTVar stateVar gs'
+            return gs'
+        catch (BL.hPutStrLn h (encode newGs))
+              (\e -> let _ = e :: IOException in return ())
 
 -- disconnectHandler (Giữ nguyên)
 disconnectHandler :: Handle -> TVar [Handle] -> IOException -> IO ()

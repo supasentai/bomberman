@@ -59,8 +59,8 @@ main :: IO ()
 main = do
   h <- connectServer "127.0.0.1" "4242"
   
-  -- SỬA LỖI: Xóa đối số `0.0` (iframes) thừa. GameState chỉ có 10 trường.
-  initGame <- newIORef (GameState [[]] [] [] [] [] Playing [] [] 0.0 30.0)
+-- SỬA LỖI: GameState giờ có 11 trường
+  initGame <- newIORef (GameState [[]] [] [] [] [] Lobby [] [] 0.0 0.0 0.0)
   
   typingRef <- newIORef False
   bufferRef <- newIORef ""
@@ -91,10 +91,14 @@ updateFunc dt st@ClientState{..} = do
   targetGs <- readIORef gameVar
   currentVisuals <- readIORef visualPlayers
   
-  let 
-    newVisuals = foldl (updateVisualPlayer dt) currentVisuals (players targetGs)
-    
-  writeIORef visualPlayers newVisuals
+  case status targetGs of
+    Playing -> do
+      let 
+        newVisuals = foldl (updateVisualPlayer dt) currentVisuals (players targetGs)
+      writeIORef visualPlayers newVisuals
+    _ -> 
+      writeIORef visualPlayers Map.empty
+      
   return st
 
 -- HÀM MỚI (Giữ nguyên)
@@ -119,19 +123,39 @@ drawState ClientState{..} = do
   visuals <- readIORef visualPlayers
 
   let gamePic = drawGame gs visuals 
-  let chatHistoryPic = drawChatHistory (chatHistory gs)
-  let chatInputPic = drawChatInput typing buffer
   
-  return (Pictures [gamePic, chatHistoryPic, chatInputPic])
+  let chatUI = if status gs /= Lobby
+               then Pictures [ drawChatHistory (chatHistory gs)
+                             , drawChatInput typing buffer ]
+               else Blank
+  
+  return (Pictures [gamePic, chatUI])
 
--- handleInput (Giữ nguyên)
+-- NÂNG CẤP: `handleInput` (Giữ nguyên)
 handleInput :: Event -> ClientState -> IO ClientState
 handleInput event st@ClientState{..} = do
   typing <- readIORef isTyping
+  gs <- readIORef gameVar
   
-  if typing
-  then handleTyping event st
-  else handlePlaying event st
+  case status gs of
+    Lobby -> handleLobby event st
+    _     -> if typing
+             then handleTyping event st
+             else handlePlaying event st
+
+-- HÀM MỚI: Xử lý input khi ở Sảnh chờ (Lobby)
+handleLobby :: Event -> ClientState -> IO ClientState
+handleLobby (EventKey (Char '1') Down _ _) st@ClientState{..} = do
+  putStrLn "CLIENT: Requesting Co-op mode"
+  hPutStrLn connHandle "/mode coop"
+  hFlush connHandle
+  return st
+handleLobby (EventKey (Char '2') Down _ _) st@ClientState{..} = do
+  putStrLn "CLIENT: Requesting 1v1 AI mode"
+  hPutStrLn connHandle "/mode 1v1"
+  hFlush connHandle
+  return st
+handleLobby _ st = return st
 
 -- NÂNG CẤP: `handlePlaying` (Giữ nguyên)
 handlePlaying :: Event -> ClientState -> IO ClientState

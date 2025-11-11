@@ -11,14 +11,22 @@ import Data.Map.Strict (Map)
 cellSize :: Float
 cellSize = 40
 
--- NÂNG CẤP: `drawPlayers` (Giờ cần truyền `GameState` đầy đủ)
+-- HÀM MỚI: Vẽ Menu (Sảnh chờ) - ĐÃ CẬP NHẬT TÊN
+drawLobby :: Picture
+drawLobby = Pictures
+  [ Translate (-350) 50 $ Scale 0.3 0.3 $ Color white $ Text "BOMBERMAN"
+  , Translate (-350) 0 $ Scale 0.15 0.15 $ Color yellow $ Text "CHON CHE DO:"
+  , Translate (-350) (-50) $ Scale 0.1 0.1 $ Color white $ Text "1. Nguoi choi vs Nguoi (Co quai vat)"
+  , Translate (-350) (-80) $ Scale 0.1 0.1 $ Color white $ Text "2. Nguoi choi vs May (Co quai vat)"
+  ]
+
+-- NÂNG CẤP: `drawGame` (Giờ kiểm tra `status` và gọi `drawStatus`)
 drawGame :: GameState -> Map Int (Float, Float) -> Picture
 drawGame gs visualPlayers =
   let
-    -- 1. Vẽ thế giới game
     gameWorld =
       case board gs of
-        [] -> Translate 0 0 $ Scale 0.2 0.2 $ Text "Board is empty"
+        [] -> Blank -- Nếu board rỗng (như ở Lobby), không vẽ gì
         b@(firstRow:_) ->
           Scale 0.6 0.6 $
           Translate (-w'/2) (-h'/2) $
@@ -31,6 +39,7 @@ drawGame gs visualPlayers =
               , drawPowerUps h (powerups gs)
               , drawMonsters h (monsters gs)
               ])
+            -- `drawStatus` sẽ xử lý Game Over HOẶC Lobby
             ++ [drawStatus (status gs) (w, h)]
           where
             w = length firstRow
@@ -38,11 +47,16 @@ drawGame gs visualPlayers =
             w' = fromIntegral w * cellSize
             h' = fromIntegral h * cellSize
     
-    -- 2. Vẽ Timer
     timerUI = drawGamePhaseTimer (gamePhaseTimer gs)
+    
+    -- `drawStatus` sẽ tự quyết định vẽ Lobby hay Game Over
+    statusUI = drawStatus (status gs) (0,0) 
   
   in
-    Pictures [gameWorld, timerUI]
+    -- Nếu là Lobby, chỉ vẽ statusUI (Menu). Nếu không, vẽ Game + Timer.
+    if status gs == Lobby
+    then statusUI
+    else Pictures [gameWorld, timerUI]
 
 -- drawBoard (Giữ nguyên)
 drawBoard :: Board -> Picture
@@ -60,7 +74,7 @@ drawCell Wall  = color (greyN 0.2) $ rectangleSolid cellSize cellSize
 drawCell Box   = color (greyN 0.4) $ rectangleSolid cellSize cellSize
 drawCell Empty = color (greyN 0.7) $ rectangleSolid cellSize cellSize
 
--- NÂNG CẤP: `drawPlayers` (Thêm hiệu ứng `iframes`)
+-- drawPlayers (Giữ nguyên)
 drawPlayers :: Int -> [Player] -> Map Int (Float, Float) -> [Picture]
 drawPlayers h ps visualPlayers =
   [ 
@@ -70,16 +84,11 @@ drawPlayers h ps visualPlayers =
           , if hasShield then color (makeColor 1 1 1 0.3) (circleSolid (r*1.5)) else Blank
           , color col (circleSolid r)
           ]
-  -- Cập nhật pattern match
-  | p@(Player pid _ True _ _ hasShield chaosT iframesT) <- ps
+  | p@(Player pid _ True _ _ hasShield chaosT iframesT _) <- ps
   , let r = cellSize / 3
   , let 
         (visualX, visualY) = Map.findWithDefault (fromIntegral $ fst (pos p), fromIntegral $ snd (pos p)) pid visualPlayers
-        
-        -- MỚI: Kiểm tra Bất tử (Chaos HOẶC Iframes)
         isInvincible = chaosT > 0 || iframesT > 0
-        
-        -- Nhấp nháy nếu Bất tử
         blinkColor = if isInvincible && (round (iframesT * 10 + chaosT * 10) `mod` 2 == 0)
                      then yellow
                      else if pid == 1 then red else blue
@@ -137,15 +146,22 @@ drawMonsters h ms =
                 Ghost -> makeColor 200 100 255 255
   ]
 
--- drawStatus (Giữ nguyên)
+-- NÂNG CẤP: `drawStatus` (Sửa logic `Lobby` và text thắng)
 drawStatus :: GameStatus -> (Int, Int) -> Picture
 drawStatus Playing _ = Blank
+drawStatus Lobby _ = drawLobby -- SỬA LỖI: Vẽ Menu
 drawStatus Draw (w, h) = centerText w h "DRAW!"
+-- XÓA BỎ text thắng/thua quái vật (không còn dùng đến)
+-- drawStatus (GameOver 100) (w, h) = centerText w h "PLAYERS WIN!"
+-- drawStatus (GameOver 99) (w, h) = centerText w h "MONSTERS WIN!"
+
+-- SỬA LẠI text cho chế độ 1v1
 drawStatus (GameOver 1) (w, h) = centerText w h "PLAYER 1 WINS!"
-drawStatus (GameOver 2) (w, h) = centerText w h "PLAYER 2 WINS!"
+drawStatus (GameOver 2) (w, h) = centerText w h "PLAYER 2 WINS!" -- (Áp dụng cho cả Người và Máy)
 drawStatus (GameOver pid) (w, h) = centerText w h ("PLAYER " ++ show pid ++ " WINS!")
 
--- centerText (GiGữ nguyên)
+
+-- centerText (Giữ nguyên)
 centerText :: Int -> Int -> String -> Picture
 centerText boardWidth boardHeight msg =
   let
