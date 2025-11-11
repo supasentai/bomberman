@@ -3,7 +3,7 @@
 module GameLogic where
 
 import Types
-import Data.List (mapAccumL, find, filter, partition, sortBy)
+import Data.List (mapAccumL, find, filter, partition, sortBy, foldl')
 import Data.Maybe (isJust, fromMaybe, catMaybes)
 import System.Random (StdGen, randomR)
 import Control.Parallel.Strategies (parList, rseq, using)
@@ -17,7 +17,7 @@ import qualified Data.Sequence as Seq
 import Data.Sequence (Seq, (|>), ViewL(..))
 import Data.Foldable (toList)
 
--- Cấu hình
+-- Cấu hình (Giữ nguyên)
 bombDefaultTimer :: Float
 bombDefaultTimer = 3.0
 flameDuration :: Float
@@ -30,10 +30,10 @@ chaosDuration :: Float
 chaosDuration = 10.0
 chaosBombTimer :: Float
 chaosBombTimer = 0.5 
-
--- MỚI: Cấu hình cho Khiên
 invincibilityDuration :: Float
-invincibilityDuration = 1.0 -- 1 giây bất tử sau khi khiên vỡ
+invincibilityDuration = 1.0
+playerAIMoveSpeed :: Float
+playerAIMoveSpeed = 0.2
 
 -- canMove (Giữ nguyên)
 canMove :: GameState -> Player -> (Int, Int) -> Bool
@@ -72,7 +72,7 @@ movePlayer pid (dx, dy) gs@GameState{..} =
   in
     case find (\p -> playerId p == pid) ps' of
       Nothing -> gs'
-      Just (Player _ newPos _ _ _ _ _ _) -> -- Sửa pattern match
+      Just (Player _ newPos _ _ _ _ _ _ _) ->
         if collectedAnything'
         then gs' { powerups = filter (\p -> pupPos p /= newPos) powerups }
         else gs'
@@ -151,7 +151,7 @@ spawnItemNearPlayer pid itemStr gs@GameState{..} =
               in gs { powerups = newPowerUp : powerups }
       _ -> gs
 
--- getFlamesInDir (Giữ nguyên)
+-- getFlamesInDir (Giữ nguyên, nhưng không export nữa vì dùng trong AI)
 getFlamesInDir :: Board -> (Int, Int) -> (Int, Int) -> Int -> [Flame]
 getFlamesInDir board (x, y) (dx, dy) n
   | n <= 0 = []
@@ -190,42 +190,46 @@ calculateAllExplosions board explodingBombs remainingBombs =
     (currentFlames ++ chainedFlames, finalBombs)
 
 -- checkGameStatus (Giữ nguyên)
-checkGameStatus :: [Player] -> GameStatus
-checkGameStatus livingPlayers =
-  case livingPlayers of
-    []  -> Draw
-    [p] -> GameOver (playerId p)
-    _   -> Playing
+checkGameStatus :: [Player] -> [Monster] -> GameStatus
+checkGameStatus players monsters =
+  let 
+    livingPlayers = filter alive players
+  in
+    case livingPlayers of
+      []  -> Draw 
+      [p] -> GameOver (playerId p) 
+      _   -> Playing 
 
--- HÀM TRỢ GIÚP (Giữ nguyên)
+-- updateBombTimer (Giữ nguyên)
 updateBombTimer :: Float -> Bomb -> Maybe Bomb
 updateBombTimer dt b = 
   let t = timer b - dt
   in if t > 0 then Just (b { timer = t }) else Nothing
 
+-- updateFlameTimer (Giữ nguyên)
 updateFlameTimer :: Float -> Flame -> Maybe Flame
 updateFlameTimer dt f = 
   let r = remain f - dt
   in if r > 0 then Just (f { remain = r }) else Nothing
 
--- NÂNG CẤP: `updatePlayerTimers` (Thêm `iframes`)
+-- updatePlayerTimers (Giữ nguyên)
 updatePlayerTimers :: Float -> [Player] -> [Player]
 updatePlayerTimers dt = map update
   where
     update p = 
       let 
-        -- Đếm ngược Chaos
         newChaos = if chaosTimer p > 0
                    then max 0 (chaosTimer p - dt)
                    else 0
-        -- Đếm ngược iframes
         newIframes = if iframes p > 0
                      then max 0 (iframes p - dt)
                      else 0
       in
         p { chaosTimer = newChaos, iframes = newIframes }
 
--- ========== LOGIC AI TÌM ĐƯỜNG (Giữ nguyên) ==========
+-- ========== LOGIC AI (Giữ nguyên và Mở rộng) ==========
+
+-- aiIsWalkable (Giữ nguyên)
 aiIsWalkable :: GameState -> MonsterType -> (Int, Int) -> Bool
 aiIsWalkable gs@GameState{..} mType (x, y) =
   case board of
@@ -244,6 +248,7 @@ aiIsWalkable gs@GameState{..} mType (x, y) =
         not (any (\b -> bpos b == (x, y)) bombs) &&
         not (any (\m -> mPos m == (x, y)) monsters)
 
+-- findClosestPlayer (Giá trị trả về thay đổi, giờ là (Int, Int))
 findClosestPlayer :: (Int, Int) -> [Player] -> Maybe (Int, Int)
 findClosestPlayer mPos allPlayers =
   let livingPlayers = filter alive allPlayers
@@ -252,16 +257,20 @@ findClosestPlayer mPos allPlayers =
   in case sortedPlayers of
       []    -> Nothing
       (p:_) -> Just (pos p)
-
+-- findPath (HÀM BỊ THIẾU - HÃY DÁN VÀO)
 findPath :: GameState -> MonsterType -> [(Int, Int)] -> (Int, Int) -> (Int, Int) -> Maybe (Int, Int)
-findPath gs@GameState{..} mType obstacles start end =
-  case board of
+findPath gs mType obstacles start end =
+  case board gs of
     [] -> Nothing
     (firstRow:_) -> 
       let
         width = length firstRow
-        height = length board
-        isWalkable = aiIsWalkable (gs { monsters = [] }) mType
+        height = length (board gs)
+        
+        -- Logic isWalkable cho BFS
+        isWalkable pos = aiIsWalkable (gs { monsters = [] }) mType pos &&
+                         not (pos `elem` obstacles)
+        
         bfs :: Seq ((Int, Int), (Int, Int)) -> Set (Int, Int) -> Maybe (Int, Int)
         bfs queue visited
           | Seq.null queue = Nothing
@@ -281,8 +290,46 @@ findPath gs@GameState{..} mType obstacles start end =
                     in
                       bfs newQueue newVisited
       in
+        -- Bắt đầu BFS
         bfs (Seq.singleton (start, start)) (Set.singleton start)
+-- | HÀM MỚI: AI tìm đường thoát khỏi vùng nguy hiểm (BFS)
+findPathToSafety :: GameState -> Player -> Set (Int, Int) -> Maybe (Int, Int)
+findPathToSafety gs p dangerTiles =
+  let 
+    start@(startX, startY) = pos p
+    
+    -- AI dùng 'canMove' của Player để kiểm tra đường đi
+    isWalkableForEscape (x,y) = canMove gs p (x,y)
 
+    bfs :: Seq ((Int, Int), (Int, Int)) -> Set (Int, Int) -> Maybe (Int, Int)
+    bfs queue visited
+      | Seq.null queue = Nothing -- Không tìm thấy đường thoát
+      | otherwise =
+          case Seq.viewl queue of
+            EmptyL -> Nothing
+            ((currPos, firstStep) :< rest) ->
+              -- MỤC TIÊU: currPos là ô AN TOÀN (nằm ngoài dangerTiles)
+              if not (currPos `Set.member` dangerTiles)
+              then 
+                -- Đã tìm thấy! Trả về HƯỚNG di chuyển
+                let (nextX, nextY) = firstStep
+                in Just (nextX - startX, nextY - startY)
+              else
+                -- Chưa an toàn, tiếp tục tìm
+                let (cx, cy) = currPos
+                    neighbors = filter (\pos -> isWalkableForEscape pos && not (Set.member pos visited))
+                                   [(cx+1, cy), (cx-1, cy), (cx, cy+1), (cx, cy-1)]
+                    newVisited = Set.union visited (Set.fromList neighbors)
+                    -- Luôn giữ lại bước đi đầu tiên trên đường đi
+                    updateStep n = if currPos == start then n else firstStep
+                    newQueue = foldl (\q n -> q |> ((n, updateStep n))) rest neighbors
+                in
+                  bfs newQueue newVisited
+  in
+    -- Bắt đầu BFS từ vị trí của người chơi
+    bfs (Seq.singleton (start, start)) (Set.singleton start)
+
+-- wander (Giữ nguyên)
 wander :: GameState -> Monster -> Monster
 wander gs m@(Monster _ (x,y) mType') =
   let
@@ -293,6 +340,7 @@ wander gs m@(Monster _ (x,y) mType') =
       Nothing -> m
       Just pos -> m { mPos = pos }
 
+-- calculateMonsterMove (Giữ nguyên)
 calculateMonsterMove :: GameState -> Monster -> Monster
 calculateMonsterMove gs m@(Monster _ mPos' mType') =
   let 
@@ -306,65 +354,226 @@ calculateMonsterMove gs m@(Monster _ mPos' mType') =
         case findPath gs mType' obstacles mPos' target of
           Nothing -> wander gs m
           Just nextStep -> m { mPos = nextStep }
--- ========== KẾT THÚC LOGIC AI ==========
+
+-- ========== HÀM MỚI: LOGIC AI CHO PLAYER (NÂNG CẤP) ==========
+
+-- | Định nghĩa các hành động mà AI Player có thể thực hiện
+data AIAction = AIWait | AIMove (Int, Int) | AIDropBomb
+
+-- | HÀM MỚI: Tính toán đường nổ của 1 quả bom (chỉ trả về vị trí)
+calculateExplosionPath :: Board -> Bomb -> [(Int, Int)]
+calculateExplosionPath board b =
+    map fpos (calculateSingleExplosion board b)
+
+-- | HÀM MỚI: Lấy TẤT CẢ các ô nguy hiểm (lửa và bom sắp nổ)
+getDangerTiles :: GameState -> Set (Int, Int)
+getDangerTiles gs =
+  let
+    flamePositions = Set.fromList $ map fpos (flames gs)
+    bombPositions = concatMap (calculateExplosionPath (board gs)) (bombs gs)
+  in
+    Set.union flamePositions (Set.fromList bombPositions)
+
+-- | HÀM MỚI: AI đi lang thang an toàn (né các ô nguy hiểm)
+findSafeWander :: GameState -> Player -> Set (Int, Int) -> StdGen -> ((Int, Int), StdGen)
+findSafeWander gs p dangerTiles rng =
+  let 
+    (x, y) = pos p
+    possibleMoves = [(0, -1), (0, 1), (-1, 0), (1, 0)]
+    validMoves = filter (\(dx,dy) -> canMove gs p (x+dx, y+dy)) possibleMoves
+    -- Lọc thêm 1 bước: chỉ giữ các bước đi an toàn
+    safeMoves = filter (\(dx,dy) -> not ((x+dx, y+dy) `Set.member` dangerTiles)) validMoves
+  in
+    if null safeMoves
+    then ((0, 0), rng) -- Bị kẹt, chấp nhận đứng yên
+    else 
+      let (idx, newRng) = randomR (0, length safeMoves - 1) rng
+      in (safeMoves !! idx, newRng)
+
+-- | HÀM MỚI: Tìm mục tiêu gần nhất (Powerup hoặc Player)
+findClosestTarget :: GameState -> Player -> Maybe (Int, Int)
+findClosestTarget gs p =
+  let 
+    myPos = pos p
+    -- Mục tiêu 1: Power-ups
+    powerUpPos = map pupPos (powerups gs)
+    -- Mục tiêu 2: Người chơi khác (không phải AI)
+    enemyPos = [pos p' | p' <- players gs, playerId p' /= playerId p, alive p', not (isAI p')]
+    
+    allTargets = powerUpPos ++ enemyPos
+    dist (x1, y1) (x2, y2) = abs (x1 - x2) + abs (y1 - y2)
+    
+  in
+    if null allTargets
+    then Nothing
+    else 
+      let 
+        sortedTargets = sortBy (\t1 t2 -> compare (dist myPos t1) (dist myPos t2)) allTargets
+      in
+        Just (head sortedTargets)
+
+-- | HÀM MỚI: AI săn đuổi mục tiêu một cách an toàn
+aiStrategicHunt :: GameState -> Player -> Set (Int, Int) -> StdGen -> ((Int, Int), StdGen)
+aiStrategicHunt gs p dangerTiles rng =
+  let 
+    (x, y) = pos p
+    mTargetPos = findClosestTarget gs p
+    
+    -- Vật cản bao gồm: bom, quái vật, và các ô NGUY HIỂM
+    obstacles = (map bpos (bombs gs)) ++ 
+                (map mPos (monsters gs)) ++
+                (Set.toList dangerTiles)
+    
+    mPath = case mTargetPos of
+              Nothing -> Nothing
+              Just target -> findPath gs Grunt obstacles (pos p) target
+  in
+    case mPath of
+      Just (nextX, nextY) -> ((nextX - x, nextY - y), rng) -- Di chuyen toi muc tieu
+      Nothing -> findSafeWander gs p dangerTiles rng -- Khong tim thay duong -> di lang thang an toan
+
+-- | "Não" AI: Quyết định hành động dựa trên GameState (ĐÃ NÂNG CẤP)
+decideAIAction :: GameState -> Player -> StdGen -> (AIAction, StdGen)
+decideAIAction gs p rng =
+  let 
+    (x, y) = pos p
+    pid = playerId p
+    
+    -- *** BƯỚC 1: NHẬN THỨC MỐI NGUY HIỂM ***
+    dangerTiles = getDangerTiles gs 
+    
+  in
+    -- *** BƯỚC 2: ƯU TIÊN AN TOÀN (NÉ) ***
+    if (x, y) `Set.member` dangerTiles && chaosTimer p <= 0
+    then 
+        case findPathToSafety gs p dangerTiles of
+          Just moveDir -> (AIMove moveDir, rng) -- Đã tìm thấy đường thoát!
+          Nothing -> (AIWait, rng) -- Bị kẹt, không có đường thoát -> Đứng yên
+        
+    -- *** BƯỚC 3: TẤN CÔNG (NẾU AN TOÀN) ***
+    else
+      let
+        -- Kiểm tra các ô xung quanh xem có mục tiêu không
+        adjacentTiles = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
+        isBox (tx, ty) = safeGetCell (board gs) (tx, ty) == Just Box
+        isEnemy (tx, ty) = any (\pl -> pos pl == (tx, ty) && not (isAI pl) && alive pl) (players gs)
+        
+        -- NÂNG CẤP: Kiểm tra cả quái vật
+        isMonster (tx, ty) = any (\m -> mPos m == (tx, ty)) (monsters gs)
+        
+        -- NÂNG CẤP: Mục tiêu giờ bao gồm cả quái vật
+        isTarget t = isBox t || isEnemy t || isMonster t
+        
+        bombableTargets = filter isTarget adjacentTiles
+        
+        (roll, r1) = randomR (0.0 :: Float, 1.0 :: Float) rng
+        -- AI sẽ đặt bom nếu có mục tiêu (bao gồm quái vật)
+        shouldBomb = not (null bombableTargets) && roll < 0.7 
+      in
+        if shouldBomb
+        then (AIDropBomb, r1) -- AI sẽ tự né vào tick sau nhờ logic ở BƯỚC 2
+        
+        -- *** BƯỚC 4: DI CHUYỂN (SĂN ĐUỔI hoặc LANG THANG) ***
+        else 
+            let (moveRoll, r2) = randomR (0.0 :: Float, 1.0 :: Float) r1
+                (moveDir, r_final)
+                  | moveRoll < 0.9 = aiStrategicHunt gs p dangerTiles r2 -- 90% san duoi
+                  | otherwise      = findSafeWander gs p dangerTiles r2 -- 10% di lang thang an toan
+            in (AIMove moveDir, r_final)
+      
+-- | Áp dụng hành động cho 1 AI Player (Giữ nguyên)
+applyAIAction :: (GameState, StdGen) -> Player -> (GameState, StdGen)
+applyAIAction (gs, rng) p =
+  let (action, newRng) = decideAIAction gs p rng
+  in case action of
+       AIWait -> (gs, newRng)
+       AIMove dir -> (movePlayer (playerId p) dir gs, newRng)
+       AIDropBomb -> (dropBomb (playerId p) gs, newRng)
+
+-- | Chạy AI cho tất cả Player nào là AI và còn sống (Giữ nguyên)
+processPlayerAI :: GameState -> StdGen -> (GameState, StdGen)
+processPlayerAI gs rng =
+  let aiPlayers = filter (\p -> isAI p && alive p) (players gs)
+  in foldl' (applyAIAction) (gs, rng) aiPlayers
 
 
--- NÂNG CẤP: tickGame (Thứ tự thực thi)
+-- ========== KẾT THÚC LOGIC AI CHO PLAYER ==========
+
+
+-- NÂNG CẤP: tickGame (Tách rời Monster AI và Player AI)
 tickGame :: Float -> StdGen -> GameState -> (GameState, StdGen)
-tickGame dt rng gs@GameState{..} =
-  case status of
+tickGame dt rng gs =
+  case status gs of
     GameOver _ -> (gs, rng)
     Draw       -> (gs, rng)
     Playing    -> 
       let
-        -- 1. SONG SONG: Cập nhật timer (Bom/Lửa)
-        updatedBombs = map (updateBombTimer dt) bombs `using` parList rseq
+        -- *** BƯỚC 1: TÍNH TOÁN AI (ĐÃ TÁCH RỜI) ***
+        
+        -- 1a. Tinh Monster AI (Dùng monsterMoveTimer)
+        (gsAfterMonsterAI, newMonsterTimer) =
+          if monsterMoveTimer gs <= 0 
+          then
+            let 
+              newTimer = monsterMoveSpeed
+              gsForMonsterAI = gs { monsters = monsters gs } 
+              monsterMoves = map (calculateMonsterMove gsForMonsterAI) (monsters gs) `using` parList rseq 
+              gsAfterMonsterAI' = gs { monsters = monsterMoves }
+            in (gsAfterMonsterAI', newTimer)
+          else
+            (gs, monsterMoveTimer gs - dt)
+        
+        -- 1b. Tinh Player AI (Dùng playerAIMoveTimer)
+        -- Chạy trên trạng thái *sau khi* quái vật đã di chuyển
+        (gsAfterPlayerAI, newPlayerAITimer, newRngAfterAI) =
+          if playerAIMoveTimer gsAfterMonsterAI <= 0
+          then
+            let
+              newTimer = playerAIMoveSpeed -- Dùng tốc độ mới
+              (gsAfterPlayerAI', newRng') = processPlayerAI gsAfterMonsterAI rng
+            in (gsAfterPlayerAI', newTimer, newRng')
+          else
+            (gsAfterMonsterAI, playerAIMoveTimer gsAfterMonsterAI - dt, rng)
+
+        -- *** TỪ BƯỚC 2 TRỞ ĐI: Dùng gsAfterPlayerAI làm trạng thái cơ sở ***
+        
+        -- 2. Cap nhat timer cho bom
+        updatedBombs = map (updateBombTimer dt) (bombs gsAfterPlayerAI) `using` parList rseq
         bombsToKeep = catMaybes updatedBombs
-        updatedFlames = map (updateFlameTimer dt) flames `using` parList rseq
+        updatedFlames = map (updateFlameTimer dt) (flames gsAfterPlayerAI) `using` parList rseq
         flames' = catMaybes updatedFlames
         
-        -- 2. NỔ DÂY CHUYỀN
+        -- 3. Tinh toan bom no
         (explodingBombs, remainingBombs) = 
             partition (\b -> timer b - dt <= 0) bombsToKeep
         (newFlames, bombsAfterExplosion) = 
-            calculateAllExplosions board explodingBombs remainingBombs
+            calculateAllExplosions (board gsAfterPlayerAI) explodingBombs remainingBombs
         allFlames = flames' ++ newFlames
         flamePositions = [fpos f | f <- allFlames]
         
-        -- 3. CẬP NHẬT BẢN ĐỒ VÀ VẬT PHẨM
-        (newBoard, destroyedBoxPos) = updateBoard board flamePositions
-        (newPowerUps, newRng) = createPowerUps rng destroyedBoxPos
-        allPowerUps = powerups ++ newPowerUps
+        -- 4. Cap nhat Board va Powerup
+        (newBoard, destroyedBoxPos) = updateBoard (board gsAfterPlayerAI) flamePositions
+        (newPowerUps, newRng') = createPowerUps newRngAfterAI destroyedBoxPos
+        allPowerUps = (powerups gsAfterPlayerAI) ++ newPowerUps
         
-        -- 4. NÂNG CẤP AI: Tiến hóa
+        -- 5. Quai vat tien hoa
         (evolvedMonsters, newPhaseTimer) =
-          if gamePhaseTimer > 0
+          if gamePhaseTimer gs > 0
           then
-               let newTimer = gamePhaseTimer - dt
+               let newTimer = gamePhaseTimer gs - dt
                in if newTimer <= 0
-                  then (map (\m -> m { mType = Ghost }) monsters, 0.0)
-                  else (monsters, newTimer)
-          else (monsters, 0.0)
+                  then (map (\m -> m { mType = Ghost }) (monsters gsAfterPlayerAI), 0.0)
+                  else ((monsters gsAfterPlayerAI), newTimer)
+          else ((monsters gsAfterPlayerAI), 0.0)
         
-        -- 5. CẬP NHẬT AI (ĐÃ GIẢM TỐC)
-        (monsterMoves, newMonsterTimer) =
-          if monsterMoveTimer <= 0
-          then
-            (map (calculateMonsterMove gs {monsters = evolvedMonsters, players = players}) evolvedMonsters `using` parList rseq, monsterMoveSpeed)
-          else
-            (evolvedMonsters, monsterMoveTimer - dt) 
-        
-        -- 6. LỌC QUÁI VẬT SỐNG SÓT
-        survivingMonsters = filter (\m -> mPos m `notElem` flamePositions) monsterMoves
-        
-        -- 7. CẬP NHẬT NGƯỜI CHƠI (Xử lý chết)
-        playersAfterHits = updatePlayers players flamePositions survivingMonsters
-        
-        -- 8. CẬP NHẬT TIMERS (SAU KHI ĐÃ NHẶT ĐỒ/CHẾT)
+        -- 6. Kiem tra quai vat / nguoi choi chet
+        survivingMonsters = filter (\m -> mPos m `notElem` flamePositions) evolvedMonsters
+        playersAfterHits = updatePlayers (players gsAfterPlayerAI) flamePositions survivingMonsters
         newPlayers = updatePlayerTimers dt playersAfterHits
-        
         livingPlayers = filter alive newPlayers
-        newStatus = checkGameStatus livingPlayers
+        
+        -- 7. Kiem tra trang thai game
+        newStatus = checkGameStatus livingPlayers survivingMonsters
 
         gs' = gs { board    = newBoard, 
                    players  = newPlayers,
@@ -373,20 +582,23 @@ tickGame dt rng gs@GameState{..} =
                    powerups = allPowerUps,
                    status   = newStatus,
                    monsters = survivingMonsters,
-                   monsterMoveTimer = newMonsterTimer,
-                   gamePhaseTimer = newPhaseTimer
+                   monsterMoveTimer = newMonsterTimer,     -- Lưu timer mới
+                   gamePhaseTimer = newPhaseTimer,
+                   playerAIMoveTimer = newPlayerAITimer -- Lưu timer mới
                  }
       in
-        (gs', newRng)
+        (gs', newRng')
 
--- NÂNG CẤP: `createPowerUps` (Giữ nguyên)
+-- createPowerUps (Giữ nguyên)
 createPowerUps :: StdGen -> [(Int, Int)] -> ([PowerUp], StdGen)
 createPowerUps rng [] = ([], rng)
 createPowerUps rng (pos:xs) =
   let
     (roll, rng') = randomR (0.0, 1.0) rng
     (pTypeIdx, rng'') = randomR (0 :: Int, 3 :: Int) rng'
+    
     (remainingPowerUps, finalRng) = createPowerUps rng'' xs
+    
     thisPowerUp = if roll < powerUpSpawnChance
                   then let pType = case pTypeIdx of
                                      0 -> BombUp
@@ -400,7 +612,7 @@ createPowerUps rng (pos:xs) =
       Just p  -> (p : remainingPowerUps, finalRng)
       Nothing -> (remainingPowerUps, finalRng)
 
--- NÂNG CẤP: `updatePlayers` (Logic bất tử/khiên hoàn chỉnh)
+-- updatePlayers (GiSử dụng `foldl'` nguyên)
 updatePlayers :: [Player] -> [(Int, Int)] -> [Monster] -> [Player]
 updatePlayers ps flamePositions monsterPositions =
   map updatePlayer ps
@@ -409,14 +621,14 @@ updatePlayers ps flamePositions monsterPositions =
     isHit p = alive p && (pos p `elem` flamePositions || pos p `elem` monsterPos)
     
     updatePlayer p
-      | isHit p = -- Nếu bị va chạm
+      | isHit p =
           if iframes p > 0 || chaosTimer p > 0
-          then p -- Bất tử (từ Chaos hoặc iframes)
-          else -- Không bất tử, kiểm tra Khiên
+          then p
+          else
             if hasShield p
-            then p { hasShield = False, iframes = invincibilityDuration } -- Mất khiên, BẬT iframes
-            else p { alive = False } -- Chết
-      | otherwise = p -- Không bị va chạm
+            then p { hasShield = False, iframes = invincibilityDuration }
+            else p { alive = False }
+      | otherwise = p
 
 -- updateBoard (Giữ nguyên)
 updateBoard :: Board -> [(Int, Int)] -> (Board, [(Int, Int)])
