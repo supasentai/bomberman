@@ -250,11 +250,11 @@ drawPlayerStatus boardWidth boardHeight p =
     -- Vị trí CHÍNH GIỮA TRÊN CÙNG
     scaledWidth  = fromIntegral boardWidth  * cellSize * 0.6
     scaledHeight = fromIntegral boardHeight * cellSize * 0.6
-    centerX      = scaledWidth / 2  -180        -- = 180px
-    topY         = scaledHeight / 2 + 35    -- Trên board 35px
+    centerX      = scaledWidth / 2  -220        -- = 180px
+    topY         = scaledHeight / 2 - 180    -- Trên board 35px
     
     -- P1 trái (-95px), P2 phải (+95px) → TỔNG 190px (cân đối)
-    offsetX = if playerId p == 1 then -95 else 95
+    offsetX = if playerId p == 1 then -250 else 308
     finalX  = centerX + offsetX
     finalY  = topY
     
