@@ -27,7 +27,7 @@ drawGame gs visualPlayers =
   let
     gameWorld =
       case board gs of
-        [] -> Blank -- Nếu board rỗng (như ở Lobby), không vẽ gì
+        [] -> Blank
         b@(firstRow:_) ->
           Scale 0.6 0.6 $
           Translate (-w'/2) (-h'/2) $
@@ -39,32 +39,26 @@ drawGame gs visualPlayers =
               , drawFlames h (flames gs)
               , drawPowerUps h (powerups gs)
               , drawMonsters h (monsters gs)
-              ])
-            -- `drawStatus` sẽ xử lý Game Over HOẶC Lobby
-            ++ [drawStatus (status gs) (w, h)]
-          where
-            w = length firstRow
-            h = length b
-            w' = fromIntegral w * cellSize
-            h' = fromIntegral h * cellSize
+              ] ++ [drawStatus (status gs) (w, h)])
+            where
+              w = length firstRow
+              h = length b
+              w' = fromIntegral w * cellSize
+              h' = fromIntegral h * cellSize
     
-    -- 2. MỚI: Vẽ trạng thái 2 players
+    -- STATUS BOX (SỬ DỤNG VỊ TRÍ MỚI)
     playerStatuses = 
       [ drawPlayerStatus w h p 
       | p <- take 2 (players gs)
       , let w = length (head (board gs))
             h = length (board gs)
       ]
-    -- 3. Vẽ Timer
-    timerUI = drawGamePhaseTimer (gamePhaseTimer gs)
     
-    -- `drawStatus` sẽ tự quyết định vẽ Lobby hay Game Over
-    statusUI = drawStatus (status gs) (0,0) 
+    timerUI = drawGamePhaseTimer (gamePhaseTimer gs)
   
   in
-    -- Nếu là Lobby, chỉ vẽ statusUI (Menu). Nếu không, vẽ Game + Timer.
     if status gs == Lobby
-    then statusUI
+    then drawStatus (status gs) (0,0)
     else Pictures [gameWorld, Pictures playerStatuses, timerUI]
 
 -- drawBoard (Giữ nguyên)
@@ -234,42 +228,53 @@ getPlayerStatus p@Player{iframes, chaosTimer, hasShield, blastRadius} =
 drawPlayerStatus :: Int -> Int -> Player -> Picture
 drawPlayerStatus boardWidth boardHeight p =
   let
-    status = getPlayerStatus p
     pidStr = "P" ++ show (playerId p)
-    statusText = case status of
-      PNormal      -> "NORMAL"
-      PRadius r    -> printf "RADIUS: %d" r
-      PShield      -> "SHIELD"
-      PChaos t     -> printf "CHAOS: %.1f" t
-      PIframe t    -> printf "INVULN: %.1f" t
+    radiusText = printf "RADIUS: %d" (blastRadius p)
+    bombsText  = printf "BOMBS: %d/%d" (maxBombs p) (maxBombs p)  -- TODO: đếm bomb đang đặt
+    shieldText = if hasShield p then "SHIELD: ON" else "SHIELD: OFF"
+    chaosText  = printf "CHAOS: %.1fs" (chaosTimer p)
+    invulnText = printf "INVULN: %.1fs" (iframes p)
     
-    -- Kích thước FIXED - nhỏ gọn + cân đối
-    boxWidth  = 190  -- ← FIXED
-    boxHeight = 70   -- ← FIXED
+    -- 5 DÒNG TEXT THEO THỨ TỰ CỐ ĐỊNH
+    statusLines = [ radiusText
+                  , bombsText
+                  , shieldText
+                  , chaosText
+                  , invulnText
+                  ]
     
-    -- Vị trí CHÍNH GIỮA TRÊN CÙNG
+    -- Kích thước box (cao hơn để chứa 5 dòng)
+    boxWidth  = 180
+    boxHeight = 140  -- TĂNG từ 70 → 120
+    
+    -- Vị trí
     scaledWidth  = fromIntegral boardWidth  * cellSize * 0.6
     scaledHeight = fromIntegral boardHeight * cellSize * 0.6
-    centerX      = scaledWidth / 2  -220        -- = 180px
-    topY         = scaledHeight / 2 - 180    -- Trên board 35px
+    centerX      = scaledWidth / 2  -100
+    topY         = scaledHeight / 2 - 90
     
-    -- P1 trái (-95px), P2 phải (+95px) → TỔNG 190px (cân đối)
-    offsetX = if playerId p == 1 then -250 else 308
+    offsetX = if playerId p == 1 then -400 else 220  
     finalX  = centerX + offsetX
     finalY  = topY
     
     -- Background + viền
-    bg      = color (makeColor 0 0 0 0.9) $ rectangleSolid boxWidth boxHeight
-    border  = color white $ rectangleWire (boxWidth+2) (boxHeight+2)
+    bg      = color (makeColor 0 0 0 0.95) $ rectangleSolid boxWidth boxHeight
+    border  = color white $ rectangleWire (boxWidth + 4) (boxHeight + 4)
     
     playerColor = if playerId p == 1 then red else blue
+    icon     = translate (-68) 54   $ color playerColor $ circleSolid 16  -- ↑ +8px
     
-    -- ICON ● CĂN GIỮA HOÀN HẢO (x = -55)
-    icon     = translate (-55) 2  $ color playerColor $ circleSolid 18
+    -- ✅ FIX: PID TITLE CÁCH ICON 20px
+    pidPic   = translate (-50) 46   $ scale 0.18 0.18 $ color white $ Text pidStr  -- ↑ +4px
     
-    -- TEXT CĂN CHUẨN (icon ● + text sát nhau)
-    pidPic    = translate (-28) 10  $ scale 0.22 0.22 $ color white $ Text pidStr
-    statusPic = translate (-28) (-20) $ scale 0.16 0.16 $ color yellow $ Text statusText
+    -- ✅ FIX: STATUS BẮT ĐẦU THẤP HƠN (cách PID 16px)
+    statusPics = 
+      [ translate (-72) (12 - fromIntegral i * 18) $  -- ↑ +6px so với 18
+        scale 0.12 0.12 $                           
+        color (if i < 2 then yellow else white) $   
+        Text line
+      | (i, line) <- zip [0..4] statusLines
+      ]
     
   in
-    Translate finalX finalY $ Pictures [bg, border, icon, pidPic, statusPic]
+    Translate finalX finalY $ Pictures [bg, border, icon, pidPic] <> Pictures statusPics

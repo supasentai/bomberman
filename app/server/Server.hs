@@ -135,7 +135,7 @@ createCoopGame rng =
       (boxedBoard, r2) = sprinkleBoxes r1 mazeBoard
       finalBoard = createSafeZone boxedBoard 
       
-      (monsterPos, r3) = findRandomEmpty r2 finalBoard 2 
+      (monsterPos, r3) = findRandomEmpty r2 finalBoard 3 
       monsters = [Monster i pos Grunt | (i, pos) <- zip [1..] monsterPos]
       
       players = [ Player 1 (1,1) True 1 1 False 0.0 0.0 False 
@@ -204,7 +204,7 @@ lobbyGameState = GameState
 main :: IO ()
 main = runServer
 
--- runServer (Giữ nguyên)
+-- runServer (THÊM GỬI PID)
 runServer :: IO ()
 runServer = withSocketsDo $ do
   addrinfos <- getAddrInfo Nothing (Just "127.0.0.1") (Just "4242")
@@ -231,6 +231,10 @@ runServer = withSocketsDo $ do
         pid <- readIORef playerCounter
         modifyIORef playerCounter (+1)
         putStrLn $ "✅ Client connected! Assigned PlayerID: " ++ show pid
+
+        -- THÊM: Gửi PID cho client ngay sau kết nối
+        hPutStrLn h ("PID:" ++ show pid)
+        hFlush h
 
         atomically $ modifyTVar clientsVar (h:)
         gs0_current <- readTVarIO stateVar

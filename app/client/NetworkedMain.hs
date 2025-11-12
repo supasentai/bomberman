@@ -13,6 +13,7 @@ import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.Char (isPrint)
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
+import Data.List (isPrefixOf)
 
 -- Import các module từ thư viện (trong 'src/')
 import Types
@@ -29,6 +30,7 @@ data ClientState = ClientState
   , visualPlayers  :: IORef (Map Int (Float, Float)) -- Vị trí hình ảnh
   , isTyping       :: IORef Bool
   , chatBuffer     :: IORef String
+  , myPlayerId     :: IORef Int
   }
 
 -- connectServer (Giữ nguyên)
@@ -54,29 +56,40 @@ recvLoop st@ClientState{..} = forever $ do
     Just gs -> writeIORef gameVar gs
     Nothing -> putStrLn " Parse error from server"
 
--- main (SỬA LỖI)
+-- main (SỬA LỖI + THÊM XỬ LÝ PID)
 main :: IO ()
 main = do
   h <- connectServer "127.0.0.1" "4242"
   
--- SỬA LỖI: GameState giờ có 11 trường
+  firstLine <- hGetLine h
+  pid <- if "PID:" `isPrefixOf` firstLine
+    then do
+      let pidStr = drop 4 firstLine
+      putStrLn $ "You are P" ++ pidStr ++ "!"
+      return (read pidStr :: Int)
+    else do
+      putStrLn $ "Error: Expected PID from server, got: " ++ firstLine
+      return 0  -- fallback
+
+  -- Lưu PID vào IORef
+  myPidRef <- newIORef pid
+
   initGame <- newIORef (GameState [[]] [] [] [] [] Lobby [] [] 0.0 0.0 0.0)
-  
   typingRef <- newIORef False
   bufferRef <- newIORef ""
   visualsRef <- newIORef Map.empty
 
-  let st = ClientState h initGame visualsRef typingRef bufferRef
+  let st = ClientState h initGame visualsRef typingRef bufferRef myPidRef
   
   _ <- forkIO (recvLoop st)
   playIO
     (InWindow "Bomberman Client" (800, 600) (100, 100))
     black
-    30 -- FPS
-    st -- State
-    drawState -- Hàm vẽ
-    handleInput -- Hàm input
-    updateFunc  -- Hàm cập nhật (cho animation)
+    30
+    st
+    drawState
+    handleInput
+    updateFunc
 
 -- HÀM MỚI (Giữ nguyên)
 moveTowards :: Float -> Float -> Float -> Float
@@ -121,15 +134,24 @@ drawState ClientState{..} = do
   typing <- readIORef isTyping
   buffer <- readIORef chatBuffer
   visuals <- readIORef visualPlayers
+  myPid <- readIORef myPlayerId  -- LẤY PID
 
   let gamePic = drawGame gs visuals 
-  
+
   let chatUI = if status gs /= Lobby
                then Pictures [ drawChatHistory (chatHistory gs)
                              , drawChatInput typing buffer ]
                else Blank
-  
-  return (Pictures [gamePic, chatUI])
+
+  -- THÊM: Hiển thị "You are P1" / "You are P2"
+  let playerLabel = if status gs == Playing && myPid > 0
+        then Translate (-380) 280 $
+             Scale 0.15 0.15 $
+             Color green $
+             Text ("You are P" ++ show myPid)
+        else Blank
+
+  return (Pictures [gamePic, chatUI, playerLabel])
 
 -- NÂNG CẤP: `handleInput` (Giữ nguyên)
 handleInput :: Event -> ClientState -> IO ClientState
