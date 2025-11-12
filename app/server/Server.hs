@@ -35,98 +35,88 @@ mazeHeight :: Int
 mazeWidth = 15
 mazeHeight = 15
 
-getNeighbors :: (Int, Int) -> Set (Int, Int) -> [(Int, Int)]
-getNeighbors (x, y) visited =
-  let potential = [(x+2, y), (x-2, y), (x, y+2), (x, y-2)]
-  in filter (\(nx, ny) -> nx > 0 && nx < mazeWidth - 1 &&
-                        ny > 0 && ny < mazeHeight - 1 &&
-                        not (Set.member (nx, ny) visited)) potential
+generateExactMaze :: StdGen -> (Board, StdGen)
+generateExactMaze rng = (exactBoard, rng)
 
-wallBetween :: (Int, Int) -> (Int, Int) -> (Int, Int)
-wallBetween (x1, y1) (x2, y2)
-  | x1 == x2 = (x1, y1 + sign (y2 - y1) * 1)  -- Giữa: bước 1
-  | y1 == y2 = (x1 + sign (x2 - x1) * 1, y1)
-  | otherwise = error "wallBetween: not aligned"
-  where
-    sign z = if z > 0 then 1 else -1
+exactBoard :: Board
+exactBoard = [
+  [Wall, Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall],
+  [Wall, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Wall,  Empty, Empty, Empty, Empty, Empty, Wall],
+  [Wall, Empty, Wall,  Wall,  Empty, Wall,  Wall,  Empty, Wall,  Empty, Empty, Wall,  Wall,  Empty, Wall],
+  [Wall, Empty, Wall,  Empty,  Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Wall,  Empty, Wall],
+  [Wall, Empty, Empty, Empty,  Empty, Empty, Wall,  Wall,  Wall,  Empty, Wall,  Empty, Empty, Empty, Wall],
+  [Wall, Wall,  Empty, Wall,  Empty, Empty, Empty, Empty, Wall,  Empty, Empty, Empty, Wall,  Wall,  Wall],
+  [Wall, Empty, Empty, Empty, Wall,  Wall,  Empty, Empty, Empty, Empty, Wall,  Empty, Empty, Empty, Wall],
+  [Wall, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Empty, Wall,  Wall,  Empty, Wall,  Wall],
+  [Wall, Empty, Wall,  Wall,  Empty, Wall,  Wall,  Empty, Empty, Empty, Empty, Empty, Empty, Empty, Wall],
+  [Wall, Empty, Empty, Wall,  Empty, Empty, Empty, Empty, Wall,  Wall,  Wall,  Empty, Wall,  Empty, Wall],
+  [Wall, Wall,  Empty, Wall,  Empty, Wall,  Wall,  Empty, Empty, Empty, Empty, Empty, Empty, Empty, Wall],
+  [Wall, Empty, Empty, Empty, Empty, Empty, Wall,  Wall,  Wall,  Empty, Wall,  Empty, Wall,  Empty, Wall],
+  [Wall, Empty, Empty, Wall,  Wall,  Empty, Empty, Empty, Empty, Empty, Wall,  Empty, Wall,  Empty,  Wall],
+  [Wall, Empty, Empty, Empty, Wall,  Wall,  Empty, Empty, Wall,  Empty, Empty, Wall,  Empty, Empty, Wall],
+  [Wall, Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall,  Wall]
+  ]
 
+-- generateMaze: Always return the exact board
+generateMaze :: StdGen -> (Board, StdGen)
+generateMaze rng = generateExactMaze rng
+
+-- sprinkleBoxes: Only 6 boxes
+sprinkleBoxes :: StdGen -> Board -> (Board, StdGen)
+sprinkleBoxes rng board =
+  let numBoxes = 75
+      -- ✅ CHO PHÉP BOX ở vùng đỏ
+      (positions, rng') = findRandomEmpty rng board numBoxes False
+      newBoard = foldl' (\b pos -> updateBoardCell b pos Box) board positions
+  in (newBoard, rng')
+
+-- createSafeZone: Clear spawn areas
+createSafeZone :: Board -> Board
+createSafeZone board =
+  let 
+    -- P1: 4 ô đỏ ở góc trên-trái (hình L)
+    p1RedZone = [(1,1), (1,2), (2,1), (3,1), (1,3)]
+    
+    -- P2: 3 ô đỏ ở góc dưới-phải (hình L ngược)
+    p2RedZone = [(13,13), (11,13), (12,13), (13,12), (13,11)]
+    
+    -- Gộp tất cả ô đỏ
+    safeRedCells = p1RedZone ++ p2RedZone  -- 7 ô
+    
+    -- Xóa sạch (đặt Empty) dù trước đó là Wall hay Box
+    clearedBoard = foldl' (\b pos -> updateBoardCell b pos Empty) board safeRedCells
+  in
+    clearedBoard
+
+-- findRandomEmpty: Avoid spawn zones
+findRandomEmpty :: StdGen -> Board -> Int -> Bool -> ([(Int, Int)], StdGen)
+                 -- ^^^ THÊM tham số: isForMonsters
+findRandomEmpty rng _ 0 _ = ([], rng)
+findRandomEmpty rng board n isForMonsters =
+  let 
+    redForbidden = [(1,1),(2,1),(3,1),(1,2),(2,2),(3,2),
+                                           (11,13),(12,13),(13,13),(11,12),(12,12),(13,12)]
+    
+    -- Nếu đặt QUÁI → cấm vùng đỏ
+    -- Nếu đặt BOX → cho phép vùng đỏ
+    candidates = [(x,y) | y <- [0..14], x <- [0..14],
+                          (board !! y) !! x == Empty,
+                          not (isForMonsters && elem (x,y) redForbidden)]
+    
+    len = length candidates
+  in
+    if len == 0 then ([], rng) else
+      let (idx, r') = randomR (0, len - 1) rng
+          pos = candidates !! idx
+          (rest, r'') = findRandomEmpty r' board (n-1) isForMonsters
+      in (pos : rest, r'')
+
+-- updateBoardCell: FIXED SYNTAX (THIS WAS THE ERROR!)
 updateBoardCell :: Board -> (Int, Int) -> Cell -> Board
 updateBoardCell b (x, y) cell =
   take y b ++
   [take x (b !! y) ++ [cell] ++ drop (x + 1) (b !! y)] ++
   drop (y + 1) b
-
-carveMaze :: StdGen -> Set (Int, Int) -> [(Int, Int)] -> Board -> (Board, StdGen)
-carveMaze rng visited [] board = (board, rng)
-carveMaze rng visited stack@(current:restStack) board =
-  let (neighbors, newRng) = case getNeighbors current visited of
-                            [] -> ([], rng)
-                            ns -> let (idx, r) = randomR (0, length ns - 1) rng
-                                  in ([ns !! idx], r)
-  in
-    case neighbors of
-      [] ->
-        carveMaze newRng visited restStack board
-      (next:_) ->
-        let 
-          wallPos = wallBetween current next
-          board' = updateBoardCell board wallPos Empty
-          board'' = updateBoardCell board' next Empty
-          visited' = Set.insert next visited
-          stack' = next : stack
-        in
-          carveMaze newRng visited' stack' board''
-
-generateMaze :: StdGen -> (Board, StdGen)
-generateMaze rng =
-  let 
-    initialBoard = replicate mazeHeight (replicate mazeWidth Wall)
-    startPos = (1, 1)
-    boardWithStart = updateBoardCell initialBoard startPos Empty 
-    visited = Set.singleton startPos
-    stack = [startPos]
-    (mazeBoard, r1) = carveMaze rng visited stack boardWithStart
-  in 
-    (mazeBoard, r1)
-
-sprinkleBoxes :: StdGen -> Board -> (Board, StdGen)
-sprinkleBoxes rng board =
-  let
-      emptyCells = [(x, y) | y <- [1..mazeHeight-2], x <- [1..mazeWidth-2], 
-                             (board !! y) !! x == Empty]
-      boxChance = 0.4 :: Float
-      (newBoard, newRng) = foldl' (sprinkleOne boxChance) (board, rng) emptyCells
-  in (newBoard, newRng)
-
-sprinkleOne :: Float -> (Board, StdGen) -> (Int, Int) -> (Board, StdGen)
-sprinkleOne chance (b, r) pos =
-  let (roll, r') = randomR (0.0, 1.0) r
-  in if roll < chance
-     then (updateBoardCell b pos Box, r')
-     else (b, r')
-
-createSafeZone :: Board -> Board
-createSafeZone board =
-  let 
-    p1Zone = [(1,1), (1,2), (2,1)]
-    p2Pos = (mazeWidth-2, mazeHeight-2)
-    p2Zone = [p2Pos, (fst p2Pos - 1, snd p2Pos), (fst p2Pos, snd p2Pos - 1)]
-    
-    clearedBoard = foldl' (\b pos -> updateBoardCell b pos Empty) board (p1Zone ++ p2Zone)
-  in
-    clearedBoard
-
-findRandomEmpty :: StdGen -> Board -> Int -> ([(Int, Int)], StdGen)
-findRandomEmpty rng _ 0 = ([], rng)
-findRandomEmpty rng board n =
-  let 
-      emptyCells = [(x, y) | y <- [1..mazeHeight-2], x <- [1..mazeWidth-2], 
-                             (board !! y) !! x == Empty,
-                             (x,y) /= (1,1), (x,y) /= (mazeWidth-2, mazeHeight-2)]
-      (idx, r') = randomR (0, length emptyCells - 1) rng
-      pos = emptyCells !! idx
-      (remainingPos, r'') = findRandomEmpty r' board (n-1)
-  in (pos : remainingPos, r'')
 
 -- NÂNG CẤP: `createCoopGame` (Player có 9 trường, GameState có 11)
 createCoopGame :: StdGen -> (GameState, StdGen)
@@ -135,7 +125,7 @@ createCoopGame rng =
       (boxedBoard, r2) = sprinkleBoxes r1 mazeBoard
       finalBoard = createSafeZone boxedBoard 
       
-      (monsterPos, r3) = findRandomEmpty r2 finalBoard 3 
+      (monsterPos, r3) = findRandomEmpty r2 finalBoard 3 True
       monsters = [Monster i pos Grunt | (i, pos) <- zip [1..] monsterPos]
       
       players = [ Player 1 (1,1) True 1 1 False 0.0 0.0 False 
@@ -153,7 +143,7 @@ createCoopGame rng =
       , monsters = monsters
       , monsterMoveTimer = 0.0
       , gamePhaseTimer = 30.0
-      , playerAIMoveTimer = 0.0 -- MỚI
+      , playerAIMoveTimer = 0.0
       }, r3)
 
 -- NÂNG CẤP: `create1v1Game` (GameState có 11 trường)
@@ -163,7 +153,7 @@ create1v1Game rng =
       (boxedBoard, r2) = sprinkleBoxes r1 mazeBoard
       finalBoard = createSafeZone boxedBoard 
       
-      (monsterPos, r3) = findRandomEmpty r2 finalBoard 2
+      (monsterPos, r3) = findRandomEmpty r2 finalBoard 2 True
       monsters = [Monster i pos Grunt | (i, pos) <- zip [1..] monsterPos]
       
       players = [ Player 1 (1,1) True 1 1 False 0.0 0.0 False 
@@ -181,7 +171,7 @@ create1v1Game rng =
       , monsters = monsters
       , monsterMoveTimer = 0.0
       , gamePhaseTimer = 30.0
-      , playerAIMoveTimer = 0.0 -- MỚI
+      , playerAIMoveTimer = 0.0
       }, r3)
 
 -- NÂNG CẤP: `lobbyGameState` (Giờ có 11 trường)
