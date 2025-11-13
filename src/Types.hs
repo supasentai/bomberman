@@ -5,6 +5,7 @@ module Types where
 
 import GHC.Generics (Generic)
 import Data.Aeson (ToJSON, FromJSON)
+import Graphics.Gloss (Picture)
 
 -- Cell (Giữ nguyên)
 data Cell = Empty | Wall | Box
@@ -94,3 +95,19 @@ data PlayerStatus
   | PChaos Float
   | PIframe Float
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+data GameAssets = GameAssets
+  { pWall     :: Picture
+  , pBox      :: Picture
+  , pEmpty    :: Picture
+  , pPlayer1  :: Picture
+  , pPlayer2  :: Picture
+  , pBomb     :: Picture
+  , pFlame    :: Picture
+  , pMonster  :: Picture
+  , pGhost    :: Picture
+  , pBombUp   :: Picture
+  , pFlameUp  :: Picture
+  , pShield   :: Picture
+  , pChaos    :: Picture
+  }

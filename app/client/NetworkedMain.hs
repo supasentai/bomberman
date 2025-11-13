@@ -2,7 +2,11 @@
 
 module Main where
 
-import Graphics.Gloss.Interface.IO.Game
+import Graphics.Gloss.Interface.IO.Game hiding (loadBMP)
+import Graphics.Gloss.Data.Bitmap (loadBMP)
+import Graphics.Gloss (Picture(Pictures), Color, color, black, white, red, blue, green, yellow, orange, magenta, greyN, rectangleSolid, circleSolid, translate)
+import Control.Exception (catch, IOException)
+
 import Network.Socket
 import System.IO
 import Control.Concurrent (forkIO)
@@ -26,11 +30,12 @@ animationSpeed = 10.0
 -- ClientState (Giữ nguyên)
 data ClientState = ClientState
   { connHandle     :: Handle
-  , gameVar        :: IORef GameState -- Trạng thái logic (từ server)
-  , visualPlayers  :: IORef (Map Int (Float, Float)) -- Vị trí hình ảnh
+  , gameVar        :: IORef GameState
+  , visualPlayers  :: IORef (Map Int (Float, Float))
   , isTyping       :: IORef Bool
   , chatBuffer     :: IORef String
   , myPlayerId     :: IORef Int
+  , assets         :: GameAssets
   }
 
 -- connectServer (Giữ nguyên)
@@ -56,9 +61,52 @@ recvLoop st@ClientState{..} = forever $ do
     Just gs -> writeIORef gameVar gs
     Nothing -> putStrLn " Parse error from server"
 
--- main (SỬA LỖI + THÊM XỬ LÝ PID)
+-- HÀM MỚI: Tải BMP an toàn, nếu lỗi thì dùng fallback
+loadOrMake :: FilePath -> Picture -> IO Picture
+loadOrMake filepath fallback = 
+  (loadBMP filepath) `catch` handleErr
+  where
+    handleErr :: IOException -> IO Picture
+    handleErr e = do
+      -- In cảnh báo ra console thay vì làm crash game
+      putStrLn $ "Warning: Could not load '" ++ filepath ++ "'. Using fallback picture."
+      return fallback
+
+-- HÀM MỚI: Tải tất cả ảnh (NÂNG CẤP: Dùng thư mục con 'assets')
+loadAssets :: IO GameAssets
+loadAssets = do
+  putStrLn "Loading assets (with fallbacks)..."
+  
+  let size = 40 -- Kích thước của fallback
+  
+      -- MỚI: Định nghĩa đường dẫn
+      assetPath = "assets/" -- Dấu / ở cuối là quan trọng!
+      
+      -- Hàm helper (hàm phụ) để nối đường dẫn
+      fp f = assetPath ++ f
+
+  -- Các ảnh fallback này chính là code vẽ mà chúng ta dùng trong Render.hs trước đây
+  pWall    <- loadOrMake (fp "wall.bmp")    (Pictures [color (greyN 0.2) (rectangleSolid size size), color (greyN 0.1) (rectangleSolid (size*0.9) (size*0.9))])
+  pBox     <- loadOrMake (fp "box.bmp")     (color (greyN 0.4) (rectangleSolid size size))
+  pEmpty   <- loadOrMake (fp "empty.bmp")   (color (greyN 0.7) (rectangleSolid size size))
+  pPlayer1 <- loadOrMake (fp "p1.bmp")    (color red (circleSolid (size/3)))
+  pPlayer2 <- loadOrMake (fp "p2.bmp")    (color blue (circleSolid (size/3)))
+  pBomb    <- loadOrMake (fp "bomb.bmp")    (Pictures [color black (circleSolid (size/2.5)), color white (translate 0 (size/3) (rectangleSolid (size/10) (size/4)))])
+  pFlame   <- loadOrMake (fp "flame.bmp")   (color orange (rectangleSolid (size*0.9) (size*0.9)))
+  pMonster <- loadOrMake (fp "monster.bmp") (color green (rectangleSolid (size*0.7) (size*0.7)))
+  pGhost   <- loadOrMake (fp "ghost.bmp")   (color (makeColor 200 100 255 255) (rectangleSolid (size*0.7) (size*0.7)))
+  pBombUp  <- loadOrMake (fp "bombup.bmp")  (color yellow (circleSolid (size/4)))
+  pFlameUp <- loadOrMake (fp "flameup.bmp") (color orange (circleSolid (size/4)))
+  pShield  <- loadOrMake (fp "shield.bmp")  (color white (circleSolid (size/4)))
+  pChaos   <- loadOrMake (fp "chaos.bmp")   (color magenta (circleSolid (size/4)))
+  
+  putStrLn "Assets loading complete."
+  return GameAssets{..}
+
+-- main (Giữ nguyên từ lần trước)
 main :: IO ()
 main = do
+  gameAssets <- loadAssets
   h <- connectServer "127.0.0.1" "4242"
   
   firstLine <- hGetLine h
@@ -69,17 +117,15 @@ main = do
       return (read pidStr :: Int)
     else do
       putStrLn $ "Error: Expected PID from server, got: " ++ firstLine
-      return 0  -- fallback
+      return 0
 
-  -- Lưu PID vào IORef
   myPidRef <- newIORef pid
-
   initGame <- newIORef (GameState [[]] [] [] [] [] Lobby [] [] 0.0 0.0 0.0)
   typingRef <- newIORef False
   bufferRef <- newIORef ""
   visualsRef <- newIORef Map.empty
 
-  let st = ClientState h initGame visualsRef typingRef bufferRef myPidRef
+  let st = ClientState h initGame visualsRef typingRef bufferRef myPidRef gameAssets
   
   _ <- forkIO (recvLoop st)
   playIO
@@ -91,14 +137,14 @@ main = do
     handleInput
     updateFunc
 
--- HÀM MỚI (Giữ nguyên)
+-- moveTowards (Giữ nguyên)
 moveTowards :: Float -> Float -> Float -> Float
 moveTowards current target amount
   | current < target = min (current + amount) target
   | current > target = max (current - amount) target
   | otherwise        = target
 
--- HÀM MỚI (Giữ nguyên)
+-- updateFunc (Giữ nguyên)
 updateFunc :: Float -> ClientState -> IO ClientState
 updateFunc dt st@ClientState{..} = do
   targetGs <- readIORef gameVar
@@ -114,7 +160,7 @@ updateFunc dt st@ClientState{..} = do
       
   return st
 
--- HÀM MỚI (Giữ nguyên)
+-- updateVisualPlayer (Giữ nguyên)
 updateVisualPlayer :: Float -> Map Int (Float, Float) -> Player -> Map Int (Float, Float)
 updateVisualPlayer dt visuals p =
   let 
@@ -126,34 +172,36 @@ updateVisualPlayer dt visuals p =
     newY = moveTowards currentY targetY moveAmount
   in
     Map.insert pid (newX, newY) visuals
-
--- NÂNG CẤP: `drawState` (Giữ nguyên)
+-- drawState (NÂNG CẤP: Khôi phục logic gốc)
 drawState :: ClientState -> IO Picture
 drawState ClientState{..} = do
   gs <- readIORef gameVar
   typing <- readIORef isTyping
   buffer <- readIORef chatBuffer
   visuals <- readIORef visualPlayers
-  myPid <- readIORef myPlayerId  -- LẤY PID
+  myPid <- readIORef myPlayerId
 
-  let gamePic = drawGame gs visuals 
+  -- gamePic đã tự căn giữa (trong Render.hs)
+  let gamePic = drawGame assets gs visuals 
 
+  -- chatUI đã tự định vị (trong Render.hs)
   let chatUI = if status gs /= Lobby
                then Pictures [ drawChatHistory (chatHistory gs)
                              , drawChatInput typing buffer ]
                else Blank
 
-  -- THÊM: Hiển thị "You are P1" / "You are P2"
+  -- playerLabel đã tự định vị (ở tọa độ tuyệt đối)
   let playerLabel = if status gs == Playing && myPid > 0
-        then Translate (-380) 280 $
+        then Translate (-380) 280 $ -- Tọa độ tuyệt đối
              Scale 0.15 0.15 $
              Color green $
              Text ("You are P" ++ show myPid)
         else Blank
 
+  -- Ghép mọi thứ lại, không cần Translate
   return (Pictures [gamePic, chatUI, playerLabel])
-
--- NÂNG CẤP: `handleInput` (Giữ nguyên)
+  
+-- handleInput (Giữ nguyên)
 handleInput :: Event -> ClientState -> IO ClientState
 handleInput event st@ClientState{..} = do
   typing <- readIORef isTyping
@@ -165,7 +213,7 @@ handleInput event st@ClientState{..} = do
              then handleTyping event st
              else handlePlaying event st
 
--- HÀM MỚI: Xử lý input khi ở Sảnh chờ (Lobby)
+-- handleLobby (Giữ nguyên)
 handleLobby :: Event -> ClientState -> IO ClientState
 handleLobby (EventKey (Char '1') Down _ _) st@ClientState{..} = do
   putStrLn "CLIENT: Requesting Co-op mode"
@@ -179,7 +227,7 @@ handleLobby (EventKey (Char '2') Down _ _) st@ClientState{..} = do
   return st
 handleLobby _ st = return st
 
--- NÂNG CẤP: `handlePlaying` (Giữ nguyên)
+-- handlePlaying (Giữ nguyên)
 handlePlaying :: Event -> ClientState -> IO ClientState
 handlePlaying (EventKey (SpecialKey KeyEnter) Down _ _) st@ClientState{..} = do
   writeIORef isTyping True
