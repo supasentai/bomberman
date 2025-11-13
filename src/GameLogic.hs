@@ -292,7 +292,7 @@ findPathToSafety :: GameState -> Player -> Set (Int, Int) -> Maybe (Int, Int)
 findPathToSafety gs p dangerTiles =
   let 
     start@(startX, startY) = pos p
-        isWalkableForEscape (x,y) = canMove gs p (x,y)
+    isWalkableForEscape (x,y) = canMove gs p (x,y)
 
     bfs :: Seq ((Int, Int), (Int, Int)) -> Set (Int, Int) -> Maybe (Int, Int)
     bfs queue visited
