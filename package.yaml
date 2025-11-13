@@ -59,5 +59,3 @@ executables:
     - aeson
     - bytestring
     - containers
-    - sdl2       
-    - sdl2-mixer  

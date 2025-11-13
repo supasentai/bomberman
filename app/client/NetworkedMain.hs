@@ -19,7 +19,6 @@ import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
 import Data.List (isPrefixOf)
 
--- Import các module từ thư viện (trong 'src/')
 import Types
 import Render
 
@@ -27,7 +26,7 @@ import Render
 animationSpeed :: Float
 animationSpeed = 10.0
 
--- ClientState (Giữ nguyên)
+-- ClientState
 data ClientState = ClientState
   { connHandle     :: Handle
   , gameVar        :: IORef GameState
@@ -38,7 +37,7 @@ data ClientState = ClientState
   , assets         :: GameAssets
   }
 
--- connectServer (Giữ nguyên)
+-- connectServer
 connectServer :: String -> String -> IO Handle
 connectServer host port = do
   addrinfos <- getAddrInfo Nothing (Just host) (Just port)
@@ -52,7 +51,7 @@ connectServer host port = do
       putStrLn " Connected to Bomberman server!"
       return h
 
--- recvLoop (Giữ nguyên)
+-- recvLoop
 recvLoop :: ClientState -> IO ()
 recvLoop st@ClientState{..} = forever $ do
   msgLine <- hGetLine connHandle
@@ -61,31 +60,25 @@ recvLoop st@ClientState{..} = forever $ do
     Just gs -> writeIORef gameVar gs
     Nothing -> putStrLn " Parse error from server"
 
--- HÀM MỚI: Tải BMP an toàn, nếu lỗi thì dùng fallback
+--nếu Tải BMP lỗi thì dùng fallback
 loadOrMake :: FilePath -> Picture -> IO Picture
 loadOrMake filepath fallback = 
   (loadBMP filepath) `catch` handleErr
   where
     handleErr :: IOException -> IO Picture
     handleErr e = do
-      -- In cảnh báo ra console thay vì làm crash game
       putStrLn $ "Warning: Could not load '" ++ filepath ++ "'. Using fallback picture."
       return fallback
 
--- HÀM MỚI: Tải tất cả ảnh (NÂNG CẤP: Dùng thư mục con 'assets')
+--Tải tất cả ảnh
 loadAssets :: IO GameAssets
 loadAssets = do
   putStrLn "Loading assets (with fallbacks)..."
   
   let size = 40 -- Kích thước của fallback
-  
-      -- MỚI: Định nghĩa đường dẫn
-      assetPath = "assets/" -- Dấu / ở cuối là quan trọng!
-      
-      -- Hàm helper (hàm phụ) để nối đường dẫn
+      assetPath = "assets/" 
       fp f = assetPath ++ f
 
-  -- Các ảnh fallback này chính là code vẽ mà chúng ta dùng trong Render.hs trước đây
   pWall    <- loadOrMake (fp "wall.bmp")    (Pictures [color (greyN 0.2) (rectangleSolid size size), color (greyN 0.1) (rectangleSolid (size*0.9) (size*0.9))])
   pBox     <- loadOrMake (fp "box.bmp")     (color (greyN 0.4) (rectangleSolid size size))
   pEmpty   <- loadOrMake (fp "empty.bmp")   (color (greyN 0.7) (rectangleSolid size size))
@@ -104,7 +97,6 @@ loadAssets = do
   putStrLn "Assets loading complete."
   return GameAssets{..}
 
--- main (Giữ nguyên từ lần trước)
 main :: IO ()
 main = do
   gameAssets <- loadAssets
@@ -138,14 +130,14 @@ main = do
     handleInput
     updateFunc
 
--- moveTowards (Giữ nguyên)
+-- moveTowards
 moveTowards :: Float -> Float -> Float -> Float
 moveTowards current target amount
   | current < target = min (current + amount) target
   | current > target = max (current - amount) target
   | otherwise        = target
 
--- updateFunc (Giữ nguyên)
+-- updateFunc
 updateFunc :: Float -> ClientState -> IO ClientState
 updateFunc dt st@ClientState{..} = do
   targetGs <- readIORef gameVar
@@ -161,7 +153,7 @@ updateFunc dt st@ClientState{..} = do
       
   return st
 
--- updateVisualPlayer (Giữ nguyên)
+-- updateVisualPlayer
 updateVisualPlayer :: Float -> Map Int (Float, Float) -> Player -> Map Int (Float, Float)
 updateVisualPlayer dt visuals p =
   let 
@@ -173,7 +165,7 @@ updateVisualPlayer dt visuals p =
     newY = moveTowards currentY targetY moveAmount
   in
     Map.insert pid (newX, newY) visuals
--- drawState (NÂNG CẤP: Khôi phục logic gốc)
+-- drawState
 drawState :: ClientState -> IO Picture
 drawState ClientState{..} = do
   gs <- readIORef gameVar
@@ -182,27 +174,22 @@ drawState ClientState{..} = do
   visuals <- readIORef visualPlayers
   myPid <- readIORef myPlayerId
 
-  -- gamePic đã tự căn giữa (trong Render.hs)
   let gamePic = drawGame assets gs visuals 
 
-  -- chatUI đã tự định vị (trong Render.hs)
   let chatUI = if status gs /= Lobby
                then Pictures [ drawChatHistory (chatHistory gs)
                              , drawChatInput typing buffer ]
                else Blank
 
-  -- playerLabel đã tự định vị (ở tọa độ tuyệt đối)
   let playerLabel = if status gs == Playing && myPid > 0
-        then Translate (-380) 280 $ -- Tọa độ tuyệt đối
+        then Translate (-380) 280 $ 
              Scale 0.15 0.15 $
              Color green $
              Text ("You are P" ++ show myPid)
         else Blank
-
-  -- Ghép mọi thứ lại, không cần Translate
   return (Pictures [gamePic, chatUI, playerLabel])
   
--- handleInput (Giữ nguyên)
+-- handleInput
 handleInput :: Event -> ClientState -> IO ClientState
 handleInput event st@ClientState{..} = do
   typing <- readIORef isTyping
@@ -214,7 +201,7 @@ handleInput event st@ClientState{..} = do
              then handleTyping event st
              else handlePlaying event st
 
--- handleLobby (Giữ nguyên)
+-- handleLobby
 handleLobby :: Event -> ClientState -> IO ClientState
 handleLobby (EventKey (Char '1') Down _ _) st@ClientState{..} = do
   putStrLn "CLIENT: Requesting Co-op mode"
@@ -228,7 +215,7 @@ handleLobby (EventKey (Char '2') Down _ _) st@ClientState{..} = do
   return st
 handleLobby _ st = return st
 
--- handlePlaying (Giữ nguyên)
+-- handlePlaying
 handlePlaying :: Event -> ClientState -> IO ClientState
 handlePlaying (EventKey (SpecialKey KeyEnter) Down _ _) st@ClientState{..} = do
   writeIORef isTyping True
@@ -260,7 +247,7 @@ handlePlaying (EventKey (Char c) Down _ _) st@ClientState{..}
       return st
 handlePlaying _ st = return st
 
--- handleTyping (Giữ nguyên)
+-- handleTyping
 handleTyping :: Event -> ClientState -> IO ClientState
 handleTyping (EventKey (SpecialKey KeyEnter) Down _ _) st@ClientState{..} = do
   buffer <- readIORef chatBuffer

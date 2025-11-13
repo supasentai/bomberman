@@ -10,24 +10,23 @@ import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
 import Types (PlayerStatus(..))
 
--- Kích thước Sprite (quan trọng)
 spriteSize :: Float
 spriteSize = 40.0
 
--- Tỉ lệ co giãn (y hệt code gốc của bạn)
+-- Tỉ lệ co giãn 
 scaleFactor :: Float
 scaleFactor = 0.8
 
--- drawLobby (Giữ nguyên)
+-- drawLobby
 drawLobby :: Picture
 drawLobby = Pictures
   [ Translate (-350) 50 $ Scale 0.3 0.3 $ Color white $ Text "BOMBERMAN"
   , Translate (-350) 0 $ Scale 0.15 0.15 $ Color yellow $ Text "CHON CHE DO:"
-  , Translate (-350) (-50) $ Scale 0.1 0.1 $ Color white $ Text "1. Nguoi choi vs Nguoi (Co quai vat)"
-  , Translate (-350) (-80) $ Scale 0.1 0.1 $ Color white $ Text "2. Nguoi choi vs May (Co quai vat)"
+  , Translate (-350) (-50) $ Scale 0.1 0.1 $ Color white $ Text "1. Nguoi choi vs Nguoi"
+  , Translate (-350) (-80) $ Scale 0.1 0.1 $ Color white $ Text "2. Nguoi choi vs May"
   ]
 
--- drawGame (NÂNG CẤP: Khôi phục Scale và Translate)
+-- drawGame 
 drawGame :: GameAssets -> GameState -> Map Int (Float, Float) -> Picture
 drawGame assets gs visualPlayers =
   let
@@ -35,7 +34,6 @@ drawGame assets gs visualPlayers =
       case board gs of
         [] -> Blank
         b@(firstRow:_) ->
-          -- *** ĐÃ KHÔI PHỤC LOGIC GỐC ***
           Scale scaleFactor scaleFactor $
           Translate (-w'/2) (-h'/2) $ 
           Pictures $
@@ -54,7 +52,7 @@ drawGame assets gs visualPlayers =
               w' = fromIntegral w * spriteSize
               h' = fromIntegral h * spriteSize
     
-    -- UI: Bảng trạng thái Player (SỬA LỖI: Truyền w, h, scaleFactor)
+    -- UI: Bảng trạng thái Player
     playerStatuses = 
       [ drawPlayerStatus scaleFactor w h p 
       | p <- take 2 (players gs)
@@ -73,7 +71,7 @@ drawGame assets gs visualPlayers =
       -- Vẽ gameWorld (đã tự căn giữa) và các UI xung quanh
       Pictures [gameWorld, Pictures playerStatuses, timerUI]
 
--- drawBoard (Sửa lỗi: dùng spriteSize)
+-- drawBoard 
 drawBoard :: GameAssets -> Board -> Picture
 drawBoard assets b =
   Pictures
@@ -83,14 +81,14 @@ drawBoard assets b =
     , (x, c) <- zip [0..] row
     ]
 
--- drawCell (Giữ nguyên)
+-- drawCell
 drawCell :: GameAssets -> Cell -> Picture
 drawCell assets Wall  = pWall assets
 drawCell assets Box   = pBox assets
 drawCell assets Empty = pEmpty assets
 
 
--- drawPlayers (NÂNG CẤP: Tách 3 hiệu ứng: Shield, Chaos, I-Frames)
+-- drawPlayers
 drawPlayers :: GameAssets -> Int -> [Player] -> Map Int (Float, Float) -> [Picture]
 drawPlayers assets h ps visualPlayers =
   [ 
@@ -104,20 +102,18 @@ drawPlayers assets h ps visualPlayers =
             
             -- 3. Hiệu ứng Chaos (vòng tròn vàng nhấp nháy)
           , if isChaos && isFlashingChaos
-            then color (makeColor 1 1 0 0.5) (circleSolid (spriteSize * 0.6)) -- <<< VÒNG TRÒN
+            then color (makeColor 1 1 0 0.5) (circleSolid (spriteSize * 0.6)) 
             else Blank
             
             -- 4. Hiệu ứng I-Frame (sprite khiên vỡ nhấp nháy)
           , if isIFrame && isFlashingIFrame
-            then pBrokenShield assets -- <<< SPRITE MỚI
+            then pBrokenShield assets 
             else Blank
           ]
-  -- Bỏ 'let isInvincible' và thay bằng logic mới
   | p@(Player pid _ True _ _ hasShield chaosT iframesT _) <- ps
   , let 
         (visualX, visualY) = Map.findWithDefault (fromIntegral $ fst (pos p), fromIntegral $ snd (pos p)) pid visualPlayers
         
-        -- Logic MỚI (tách biệt)
         isChaos = chaosT > 0
         isIFrame = iframesT > 0
         
@@ -131,18 +127,15 @@ drawBombs assets h bs =
   [ translate (fromIntegral x * spriteSize) 
               (fromIntegral (h - 1 - y) * spriteSize)
       $ Pictures
-          [ -- 1. Vẽ sprite bom (co dãn)
+          [ 
             Scale s s $ pBomb assets
             
-            -- 2. HÀM MỚI: Vẽ lớp "nhấp nháy" nếu sắp nổ
           , if isAboutToExplode
             then color (makeColor 1 1 1 0.7) (circleSolid (spriteSize * 0.5))
             else Blank
           ]
   | Bomb (x,y) t _ _ <- bs
-  -- Giữ nguyên logic co dãn
-  , let s = 0.8 + 0.4 * (t / 2.0) -- Giả sử bombTimer là 2.0
-  -- Logic MỚI: Kiểm tra nếu còn dưới 0.5s và (mod 2) để tạo hiệu ứng nhấp nháy
+  , let s = 0.8 + 0.4 * (t / 2.0) 
   , let isAboutToExplode = t < 0.5 && (round (t * 20) `mod` 2 == 0)
   ]
 
@@ -152,20 +145,18 @@ drawFlames assets h fs =
   [ translate (fromIntegral x * spriteSize) 
               (fromIntegral (h - 1 - y) * spriteSize)
       $ Pictures
-          [ -- Logic MỚI: Scale và Color
+          [ 
             Scale scaleFactor scaleFactor $
             color (makeColor 1 1 1 alpha) $
-            pFlame assets -- Vẽ sprite lửa
+            pFlame assets
           ]
   | Flame (x,y) r <- fs
-  -- Logic MỚI: Tính toán tỉ lệ co nhỏ và độ mờ
-  -- (Chúng ta dùng 0.5 vì đó là flameDuration mới của bạn)
   , let flameDuration = 0.5 
   , let scaleFactor = max 0 (r / flameDuration)
   , let alpha = max 0 (r / flameDuration)
   ]
 
--- drawPowerUps (Sửa lỗi: dùng spriteSize)
+-- drawPowerUps
 drawPowerUps :: GameAssets -> Int -> [PowerUp] -> [Picture]
 drawPowerUps assets h pups =
   [ translate (fromIntegral x * spriteSize) 
@@ -178,7 +169,7 @@ drawPowerUps assets h pups =
         spriteFor Chaos   = pChaos assets
   ]
 
--- drawMonsters (Sửa lỗi: dùng spriteSize)
+-- drawMonsters
 drawMonsters :: GameAssets -> Int -> [Monster] -> [Picture]
 drawMonsters assets h ms =
   [ translate (fromIntegral x * spriteSize) 
@@ -189,7 +180,7 @@ drawMonsters assets h ms =
         spriteFor Ghost = color (makeColor 1 1 1 0.7) (pGhost assets)
   ]
 
--- drawStatus (Giữ nguyên)
+-- drawStatus
 drawStatus :: GameStatus -> (Int, Int) -> Picture
 drawStatus Playing _ = Blank
 drawStatus Lobby _ = drawLobby
@@ -199,40 +190,38 @@ drawStatus (GameOver 2) (w, h) = centerText w h "PLAYER 2 WINS!"
 drawStatus (GameOver pid) (w, h) = centerText w h ("PLAYER " ++ show pid ++ " WINS!")
 
 
--- centerText (Sửa lỗi: dùng spriteSize)
+-- centerText
 centerText :: Int -> Int -> String -> Picture
 centerText boardWidth boardHeight msg =
   let
-    -- Tính toán dựa trên spriteSize
     centerX = (fromIntegral boardWidth * spriteSize) / 2
     centerY = (fromIntegral boardHeight * spriteSize) / 2
     textWidth = fromIntegral (length msg) * 12
   in
-    -- Vị trí này là *tương đối* với gameWorld, sẽ được scale
     Translate (centerX - textWidth) (centerY - 10) $
     Scale 0.2 0.2 $
     Color white $
     Text msg
 
--- drawGamePhaseTimer (Sửa lỗi: Khôi phục tọa độ gốc)
+-- drawGamePhaseTimer
 drawGamePhaseTimer :: Float -> Picture
 drawGamePhaseTimer timer
   | timer <= 0 =
-      Translate 250 280 $ -- Tọa độ tuyệt đối
+      Translate 250 280 $
       Scale 0.15 0.15 $
       Color red $
       Text "GHOSTS UNLEASHED!"
   | otherwise =
-      Translate 300 280 $ -- Tọa độ tuyệt đối
+      Translate 300 280 $
       Scale 0.2 0.2 $
       Color white $
       Text (printf "%.1f" timer)
 
--- drawChatHistory (Sửa lỗi: Khôi phục tọa độ gốc)
+-- drawChatHistory
 drawChatHistory :: [String] -> Picture
 drawChatHistory msgs =
   let recentMsgs = take 6 msgs
-  in Translate (-260) (-380) $ -- Tọa độ tuyệt đối
+  in Translate (-260) (-380) $ 
      Scale 0.11 0.11 $
      Pictures
        [ Translate 0 (fromIntegral i * 140) $
@@ -241,17 +230,17 @@ drawChatHistory msgs =
        | (i, msg) <- zip [0..] recentMsgs
        ]
 
--- drawChatInput (Sửa lỗi: Khôi phục tọa độ gốc)
+-- drawChatInput
 drawChatInput :: Bool -> String -> Picture
 drawChatInput isTyping buffer =
-  Translate (-260) (-400) $ -- Tọa độ tuyệt đối
+  Translate (-260) (-400) $ 
   Scale 0.12 0.12 $
   Color white $
   if isTyping
   then Text ("> " ++ take 45 buffer ++ (if length buffer > 45 then "..." else "") ++ "_")
   else Text "[Enter để chat]"
 
--- getPlayerStatus (Giữ nguyên)
+-- getPlayerStatus
 getPlayerStatus :: Player -> PlayerStatus
 getPlayerStatus p@Player{iframes, chaosTimer, hasShield, blastRadius} =
   if iframes > 0
@@ -262,7 +251,7 @@ getPlayerStatus p@Player{iframes, chaosTimer, hasShield, blastRadius} =
         then PShield
         else PRadius blastRadius
 
--- drawPlayerStatus (Sửa lỗi: Khôi phục logic vị trí gốc)
+-- drawPlayerStatus
 drawPlayerStatus :: Float -> Int -> Int -> Player -> Picture
 drawPlayerStatus scaleFactor boardWidth boardHeight p =
   let
@@ -278,7 +267,7 @@ drawPlayerStatus scaleFactor boardWidth boardHeight p =
     boxWidth  = 180
     boxHeight = 140
     
-    -- *** ĐÃ KHÔI PHỤC LOGIC GỐC ***
+    -- ĐÃ KHÔI PHỤC LOGIC GỐC
     -- Tính toán vị trí dựa trên kích thước đã scale
     scaledWidth  = fromIntegral boardWidth  * spriteSize * scaleFactor
     scaledHeight = fromIntegral boardHeight * spriteSize * scaleFactor
@@ -289,7 +278,7 @@ drawPlayerStatus scaleFactor boardWidth boardHeight p =
     offsetX = if playerId p == 1 then -400 else 290  
     finalX  = centerX + offsetX
     finalY  = topY
-    -- *** KẾT THÚC LOGIC GỐC ***
+    -- KẾT THÚC LOGIC GỐC
     
     bg      = color (makeColor 0 0 0 0.95) $ rectangleSolid boxWidth boxHeight
     border  = color white $ rectangleWire (boxWidth + 4) (boxHeight + 4)

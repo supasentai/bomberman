@@ -17,11 +17,9 @@ import System.Random (newStdGen, randomR, StdGen)
 import qualified Data.Set as Set
 import Data.Set (Set)
 
--- Import thư viện
 import Types
 import GameLogic
 
--- Cấu hình (Giữ nguyên)
 tickRate :: Int
 tickRate = 30
 tickDelay :: Int
@@ -29,7 +27,7 @@ tickDelay = 1000000 `div` tickRate
 dt :: Float
 dt = fromIntegral tickDelay / 1000000.0
 
--- ========== LOGIC TẠO MÊ CUNG (Giữ nguyên) ==========
+-- ========== LOGIC TẠO MÊ CUNG ==========
 mazeWidth :: Int
 mazeHeight :: Int
 mazeWidth = 15
@@ -61,11 +59,9 @@ exactBoard = [
 generateMaze :: StdGen -> (Board, StdGen)
 generateMaze rng = generateExactMaze rng
 
--- sprinkleBoxes: Only 6 boxes
 sprinkleBoxes :: StdGen -> Board -> (Board, StdGen)
 sprinkleBoxes rng board =
   let numBoxes = 75
-      -- ✅ CHO PHÉP BOX ở vùng đỏ
       (positions, rng') = findRandomEmpty rng board numBoxes False
       newBoard = foldl' (\b pos -> updateBoardCell b pos Box) board positions
   in (newBoard, rng')
@@ -74,31 +70,20 @@ sprinkleBoxes rng board =
 createSafeZone :: Board -> Board
 createSafeZone board =
   let 
-    -- P1: 4 ô đỏ ở góc trên-trái (hình L)
     p1RedZone = [(1,1), (1,2), (2,1), (3,1), (1,3)]
-    
-    -- P2: 3 ô đỏ ở góc dưới-phải (hình L ngược)
     p2RedZone = [(13,13), (11,13), (12,13), (13,12), (13,11)]
-    
-    -- Gộp tất cả ô đỏ
-    safeRedCells = p1RedZone ++ p2RedZone  -- 7 ô
-    
-    -- Xóa sạch (đặt Empty) dù trước đó là Wall hay Box
+    safeRedCells = p1RedZone ++ p2RedZone  
     clearedBoard = foldl' (\b pos -> updateBoardCell b pos Empty) board safeRedCells
   in
     clearedBoard
 
 -- findRandomEmpty: Avoid spawn zones
 findRandomEmpty :: StdGen -> Board -> Int -> Bool -> ([(Int, Int)], StdGen)
-                 -- ^^^ THÊM tham số: isForMonsters
 findRandomEmpty rng _ 0 _ = ([], rng)
 findRandomEmpty rng board n isForMonsters =
   let 
     redForbidden = [(1,1),(2,1),(3,1),(1,2),(2,2),(3,2),(4,1),(5,1),(4,2),(1,3),(1,4),(2,4),(3,3),(3,4),
                                            (11,13),(12,13),(13,13),(11,12),(12,12),(13,12),(13,11),(13,10),(12,10),(11,10),(11,11),(10,13),(9,13),(9,12),(13,9),(13,8),(9,12),(9,11),(12,8),(11,8)]
-    
-    -- Nếu đặt QUÁI → cấm vùng đỏ
-    -- Nếu đặt BOX → cho phép vùng đỏ
     candidates = [(x,y) | y <- [0..14], x <- [0..14],
                           (board !! y) !! x == Empty,
                           not (isForMonsters && elem (x,y) redForbidden)]
@@ -111,14 +96,12 @@ findRandomEmpty rng board n isForMonsters =
           (rest, r'') = findRandomEmpty r' board (n-1) isForMonsters
       in (pos : rest, r'')
 
--- updateBoardCell: FIXED SYNTAX (THIS WAS THE ERROR!)
 updateBoardCell :: Board -> (Int, Int) -> Cell -> Board
 updateBoardCell b (x, y) cell =
   take y b ++
   [take x (b !! y) ++ [cell] ++ drop (x + 1) (b !! y)] ++
   drop (y + 1) b
 
--- NÂNG CẤP: `createCoopGame` (Player có 9 trường, GameState có 11)
 createCoopGame :: StdGen -> (GameState, StdGen)
 createCoopGame rng =
   let (mazeBoard, r1) = generateMaze rng
@@ -146,7 +129,6 @@ createCoopGame rng =
       , playerAIMoveTimer = 0.0
       }, r3)
 
--- NÂNG CẤP: `create1v1Game` (GameState có 11 trường)
 create1v1Game :: StdGen -> (GameState, StdGen)
 create1v1Game rng =
   let (mazeBoard, r1) = generateMaze rng
@@ -174,7 +156,6 @@ create1v1Game rng =
       , playerAIMoveTimer = 0.0
       }, r3)
 
--- NÂNG CẤP: `lobbyGameState` (Giờ có 11 trường)
 lobbyGameState :: GameState
 lobbyGameState = GameState
   { board = [[]]
@@ -187,14 +168,15 @@ lobbyGameState = GameState
   , monsters = []
   , monsterMoveTimer = 0.0
   , gamePhaseTimer = 0.0
-  , playerAIMoveTimer = 0.0 -- MỚI
+  , playerAIMoveTimer = 0.0
   }
+
 -- ========== KẾT THÚC LOGIC MÊ CUNG ==========
 
 main :: IO ()
 main = runServer
 
--- runServer (THÊM GỬI PID)
+-- runServer
 runServer :: IO ()
 runServer = withSocketsDo $ do
   addrinfos <- getAddrInfo Nothing (Just "127.0.0.1") (Just "4242")
@@ -222,7 +204,6 @@ runServer = withSocketsDo $ do
         modifyIORef playerCounter (+1)
         putStrLn $ "✅ Client connected! Assigned PlayerID: " ++ show pid
 
-        -- THÊM: Gửi PID cho client ngay sau kết nối
         hPutStrLn h ("PID:" ++ show pid)
         hFlush h
 
@@ -230,9 +211,9 @@ runServer = withSocketsDo $ do
         gs0_current <- readTVarIO stateVar
         BL.hPutStrLn h (encode gs0_current)
 
-        forkIO $ clientHandler h stateVar clientsVar rngVar pid -- Sửa: Thêm rngVar
+        forkIO $ clientHandler h stateVar clientsVar rngVar pid
 
--- NÂNG CẤP: `gameLoop` (Reset về Lobby)
+--gameLoop
 gameLoop :: TVar GameState -> TVar [Handle] -> TVar StdGen -> IO ()
 gameLoop stateVar clientsVar rngVar = forever $ do
   threadDelay tickDelay
@@ -262,7 +243,7 @@ gameLoop stateVar clientsVar rngVar = forever $ do
       atomically $ writeTVar stateVar lobbyGameState
       putStrLn "Game reset! Returned to Lobby."
 
--- broadcast (Giữ nguyên)
+-- broadcast
 broadcast :: [Handle] -> GameState -> IO [Handle]
 broadcast handles gs = do
   results <- forM handles $ \h -> do
@@ -273,7 +254,7 @@ broadcast handles gs = do
           (\e -> let _ = e :: IOException in return Nothing)
   return (catMaybes results)
 
--- NÂNG CẤP: `clientHandler` (Thêm `rngVar`)
+--clientHandler
 clientHandler :: Handle -> TVar GameState -> TVar [Handle] -> TVar StdGen -> Int -> IO ()
 clientHandler h stateVar clientsVar rngVar pid =
   handle (disconnectHandler h clientsVar) $
@@ -282,7 +263,6 @@ clientHandler h stateVar clientsVar rngVar pid =
       if "/mode " `isPrefixOf` line
       then do
         let mode = drop 6 line
-        -- Lấy rng MỚI khi tạo game
         (newGs, newRng) <- atomically $ do
           r <- readTVar rngVar
           let (newGs, r') = if mode == "coop"
@@ -293,7 +273,6 @@ clientHandler h stateVar clientsVar rngVar pid =
           return (newGs, r')
           
         putStrLn $ "Player " ++ show pid ++ " started game mode: " ++ mode
-        -- Cần broadcast game MỚI cho TẤT CẢ client
         handles <- readTVarIO clientsVar
         newHandles <- broadcast handles newGs
         atomically $ writeTVar clientsVar newHandles
@@ -301,7 +280,6 @@ clientHandler h stateVar clientsVar rngVar pid =
       else do
         newGs <- atomically $ do
             gs <- readTVar stateVar
-            -- Chỉ cho phép lệnh game nếu đang Playing
             let gs' = if status gs == Playing
                       then updateFromCommand gs line pid
                       else gs
@@ -310,13 +288,13 @@ clientHandler h stateVar clientsVar rngVar pid =
         catch (BL.hPutStrLn h (encode newGs))
               (\e -> let _ = e :: IOException in return ())
 
--- disconnectHandler (Giữ nguyên)
+-- disconnectHandler
 disconnectHandler :: Handle -> TVar [Handle] -> IOException -> IO ()
 disconnectHandler h clientsVar _ = do
   putStrLn "Client disconnected."
   atomically $ modifyTVar clientsVar (filter (/= h))
 
--- updateFromCommand (Giữ nguyên)
+-- updateFromCommand
 updateFromCommand :: GameState -> String -> Int -> GameState
 updateFromCommand gs cmd pid
     | "/say " `isPrefixOf` cmd =

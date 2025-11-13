@@ -7,13 +7,13 @@ import GHC.Generics (Generic)
 import Data.Aeson (ToJSON, FromJSON)
 import Graphics.Gloss (Picture)
 
--- Cell (Giữ nguyên)
+-- Cell
 data Cell = Empty | Wall | Box
    deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 type Board = [[Cell]]
 
--- PowerUpType (Giữ nguyên)
+-- PowerUpType
 data PowerUpType
   = BombUp
   | FlameUp
@@ -21,13 +21,12 @@ data PowerUpType
   | Chaos
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- PowerUp (Giữ nguyên)
+-- PowerUp
 data PowerUp = PowerUp
   { pupPos  :: (Int, Int)
   , pupType :: PowerUpType
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- NÂNG CẤP: Player (9 trường)
 data Player = Player
   { playerId    :: Int
   , pos         :: (Int, Int)
@@ -36,12 +35,12 @@ data Player = Player
   , blastRadius :: Int
   , hasShield   :: Bool
   , chaosTimer  :: Float
-  , iframes     :: Float -- MỚI: Khung thời gian bất tử
-  , isAI        :: Bool  -- MỚI: Dành cho chế độ 1v1
+  , iframes     :: Float 
+  , isAI        :: Bool 
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 
--- Bomb (Giữ nguyên)
+-- Bomb
 data Bomb = Bomb
   { bpos    :: (Int, Int)
   , timer   :: Float
@@ -49,13 +48,13 @@ data Bomb = Bomb
   , bOwner  :: Int
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- Flame (Giữ nguyên)
+-- Flame
 data Flame = Flame
   { fpos    :: (Int, Int)
   , remain  :: Float
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- GameStatus (Giữ nguyên)
+-- GameStatus
 data GameStatus
   = Playing
   | GameOver Int
@@ -63,7 +62,7 @@ data GameStatus
   | Lobby
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- Monster (Giữ nguyên)
+-- Monster
 data MonsterType = Grunt | Ghost
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
@@ -73,7 +72,7 @@ data Monster = Monster
   , mType :: MonsterType
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
--- GameState (NÂNG CẤP: 11 trường)
+-- GameState
 data GameState = GameState
   { board            :: Board
   , players          :: [Player]
