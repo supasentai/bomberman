@@ -90,44 +90,79 @@ drawCell assets Box   = pBox assets
 drawCell assets Empty = pEmpty assets
 
 
--- drawPlayers (Sửa lỗi: dùng spriteSize)
+-- drawPlayers (NÂNG CẤP: Tách 3 hiệu ứng: Shield, Chaos, I-Frames)
 drawPlayers :: GameAssets -> Int -> [Player] -> Map Int (Float, Float) -> [Picture]
 drawPlayers assets h ps visualPlayers =
   [ 
     translate (visualX * spriteSize) (fromIntegral (h - 1) * spriteSize - visualY * spriteSize)
       $ Pictures
-          [ if playerId p == 1 then pPlayer1 assets else pPlayer2 assets
+          [ -- 1. Sprite người chơi
+            if playerId p == 1 then pPlayer1 assets else pPlayer2 assets
+            
+            -- 2. Hiệu ứng Shield (bong bóng xanh)
           , if hasShield then color (makeColor 1 1 1 0.3) (circleSolid (spriteSize*0.6)) else Blank
-          , if isInvincible && (round (iframesT * 10 + chaosT * 10) `mod` 2 == 0)
-            then color (makeColor 1 1 0 0.5) (rectangleSolid spriteSize spriteSize) 
+            
+            -- 3. Hiệu ứng Chaos (vòng tròn vàng nhấp nháy)
+          , if isChaos && isFlashingChaos
+            then color (makeColor 1 1 0 0.5) (circleSolid (spriteSize * 0.6)) -- <<< VÒNG TRÒN
+            else Blank
+            
+            -- 4. Hiệu ứng I-Frame (sprite khiên vỡ nhấp nháy)
+          , if isIFrame && isFlashingIFrame
+            then pBrokenShield assets -- <<< SPRITE MỚI
             else Blank
           ]
+  -- Bỏ 'let isInvincible' và thay bằng logic mới
   | p@(Player pid _ True _ _ hasShield chaosT iframesT _) <- ps
   , let 
         (visualX, visualY) = Map.findWithDefault (fromIntegral $ fst (pos p), fromIntegral $ snd (pos p)) pid visualPlayers
-        isInvincible = chaosT > 0 || iframesT > 0
+        
+        -- Logic MỚI (tách biệt)
+        isChaos = chaosT > 0
+        isIFrame = iframesT > 0
+        
+        isFlashingChaos = (round (chaosT * 10) `mod` 2 == 0)
+        isFlashingIFrame = (round (iframesT * 10) `mod` 2 == 0)
   ]
 
--- drawBombs (Sửa lỗi: dùng spriteSize)
+-- drawBombs
 drawBombs :: GameAssets -> Int -> [Bomb] -> [Picture]
 drawBombs assets h bs =
   [ translate (fromIntegral x * spriteSize) 
               (fromIntegral (h - 1 - y) * spriteSize)
-      $ Scale s s
-      $ pBomb assets
+      $ Pictures
+          [ -- 1. Vẽ sprite bom (co dãn)
+            Scale s s $ pBomb assets
+            
+            -- 2. HÀM MỚI: Vẽ lớp "nhấp nháy" nếu sắp nổ
+          , if isAboutToExplode
+            then color (makeColor 1 1 1 0.7) (circleSolid (spriteSize * 0.5))
+            else Blank
+          ]
   | Bomb (x,y) t _ _ <- bs
-  , let s = 0.8 + 0.4 * (t / 3) 
+  -- Giữ nguyên logic co dãn
+  , let s = 0.8 + 0.4 * (t / 2.0) -- Giả sử bombTimer là 2.0
+  -- Logic MỚI: Kiểm tra nếu còn dưới 0.5s và (mod 2) để tạo hiệu ứng nhấp nháy
+  , let isAboutToExplode = t < 0.5 && (round (t * 20) `mod` 2 == 0)
   ]
 
--- drawFlames (Sửa lỗi: dùng spriteSize)
+-- drawFlames
 drawFlames :: GameAssets -> Int -> [Flame] -> [Picture]
 drawFlames assets h fs =
   [ translate (fromIntegral x * spriteSize) 
               (fromIntegral (h - 1 - y) * spriteSize)
-      $ color (makeColor 1 1 1 alpha)
-      $ pFlame assets
+      $ Pictures
+          [ -- Logic MỚI: Scale và Color
+            Scale scaleFactor scaleFactor $
+            color (makeColor 1 1 1 alpha) $
+            pFlame assets -- Vẽ sprite lửa
+          ]
   | Flame (x,y) r <- fs
-  , let alpha = max 0 (r / 1.5)
+  -- Logic MỚI: Tính toán tỉ lệ co nhỏ và độ mờ
+  -- (Chúng ta dùng 0.5 vì đó là flameDuration mới của bạn)
+  , let flameDuration = 0.5 
+  , let scaleFactor = max 0 (r / flameDuration)
+  , let alpha = max 0 (r / flameDuration)
   ]
 
 -- drawPowerUps (Sửa lỗi: dùng spriteSize)

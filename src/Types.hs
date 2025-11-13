@@ -109,5 +109,6 @@ data GameAssets = GameAssets
   , pBombUp   :: Picture
   , pFlameUp  :: Picture
   , pShield   :: Picture
+  , pBrokenShield :: Picture
   , pChaos    :: Picture
   }

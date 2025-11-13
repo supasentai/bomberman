@@ -8,7 +8,6 @@ import Data.Maybe (isJust, fromMaybe, catMaybes)
 import System.Random (StdGen, randomR)
 import Control.Parallel.Strategies (parList, rseq, using)
 
--- Imports cho BFS (Giữ nguyên)
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
 import qualified Data.Set as Set
@@ -19,9 +18,9 @@ import Data.Foldable (toList)
 
 -- Cấu hình (Giữ nguyên)
 bombDefaultTimer :: Float
-bombDefaultTimer = 3.0
+bombDefaultTimer = 2.0
 flameDuration :: Float
-flameDuration = 0.8
+flameDuration = 0.5
 powerUpSpawnChance :: Float
 powerUpSpawnChance = 0.5
 monsterMoveSpeed :: Float
@@ -589,22 +588,31 @@ tickGame dt rng gs =
       in
         (gs', newRng')
 
--- createPowerUps (Giữ nguyên)
+-- createPowerUps (NÂNG CẤP: Giảm tỉ lệ rơi Chaos)
 createPowerUps :: StdGen -> [(Int, Int)] -> ([PowerUp], StdGen)
 createPowerUps rng [] = ([], rng)
 createPowerUps rng (pos:xs) =
   let
+    -- 1. Quyết định xem có rơi vật phẩm không (giữ nguyên)
     (roll, rng') = randomR (0.0, 1.0) rng
-    (pTypeIdx, rng'') = randomR (0 :: Int, 3 :: Int) rng'
+    
+    -- 2. NÂNG CẤP: Quyết định loại vật phẩm
+    -- Tăng tổng số "vé" lên 8 (thay vì 4)
+    (pTypeIdx, rng'') = randomR (0 :: Int, 7 :: Int) rng' -- <<< THAY ĐỔI: từ (0, 3)
     
     (remainingPowerUps, finalRng) = createPowerUps rng'' xs
     
     thisPowerUp = if roll < powerUpSpawnChance
-                  then let pType = case pTypeIdx of
-                                     0 -> BombUp
-                                     1 -> FlameUp
-                                     2 -> Shield
-                                     _ -> Chaos
+                  then let 
+                         -- NÂNG CẤP: Phân phối lại tỉ lệ
+                         pType = case pTypeIdx of
+                                     0 -> BombUp   -- BombUp
+                                     1 -> FlameUp  -- FlameUp
+                                     2 -> Shield   -- Shield
+                                     3 -> BombUp   -- (Thêm) BombUp
+                                     4 -> FlameUp  -- (Thêm) FlameUp
+                                     5 -> Shield   -- (Thêm) Shield
+                                     _ -> Chaos    -- <<< Chaos giờ chỉ là 1/8 (12.5%)
                        in Just (PowerUp pos pType)
                   else Nothing
   in

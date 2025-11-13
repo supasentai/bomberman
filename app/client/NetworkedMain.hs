@@ -99,6 +99,7 @@ loadAssets = do
   pFlameUp <- loadOrMake (fp "flameup.bmp") (color orange (circleSolid (size/4)))
   pShield  <- loadOrMake (fp "shield.bmp")  (color white (circleSolid (size/4)))
   pChaos   <- loadOrMake (fp "chaos.bmp")   (color magenta (circleSolid (size/4)))
+  pBrokenShield <- loadOrMake (fp "broken_shield.bmp") (color (greyN 0.5) (circleSolid (size * 0.5)))
   
   putStrLn "Assets loading complete."
   return GameAssets{..}
