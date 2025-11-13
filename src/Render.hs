@@ -16,7 +16,7 @@ spriteSize = 40.0
 
 -- Tỉ lệ co giãn (y hệt code gốc của bạn)
 scaleFactor :: Float
-scaleFactor = 0.6
+scaleFactor = 0.8
 
 -- drawLobby (Giữ nguyên)
 drawLobby :: Picture
@@ -197,7 +197,7 @@ drawGamePhaseTimer timer
 drawChatHistory :: [String] -> Picture
 drawChatHistory msgs =
   let recentMsgs = take 6 msgs
-  in Translate (-350) (-380) $ -- Tọa độ tuyệt đối
+  in Translate (-260) (-380) $ -- Tọa độ tuyệt đối
      Scale 0.11 0.11 $
      Pictures
        [ Translate 0 (fromIntegral i * 140) $
@@ -209,7 +209,7 @@ drawChatHistory msgs =
 -- drawChatInput (Sửa lỗi: Khôi phục tọa độ gốc)
 drawChatInput :: Bool -> String -> Picture
 drawChatInput isTyping buffer =
-  Translate (-350) (-400) $ -- Tọa độ tuyệt đối
+  Translate (-260) (-400) $ -- Tọa độ tuyệt đối
   Scale 0.12 0.12 $
   Color white $
   if isTyping
@@ -247,11 +247,11 @@ drawPlayerStatus scaleFactor boardWidth boardHeight p =
     -- Tính toán vị trí dựa trên kích thước đã scale
     scaledWidth  = fromIntegral boardWidth  * spriteSize * scaleFactor
     scaledHeight = fromIntegral boardHeight * spriteSize * scaleFactor
-    centerX      = scaledWidth / 2  - 100 -- Lệch 100
+    centerX      = scaledWidth / 2  - 200 -- Lệch 100
     topY         = scaledHeight / 2 - 90  -- Lệch 90
     
     -- Đặt P1 bên trái, P2 bên phải
-    offsetX = if playerId p == 1 then -400 else 220  
+    offsetX = if playerId p == 1 then -400 else 290  
     finalX  = centerX + offsetX
     finalY  = topY
     -- *** KẾT THÚC LOGIC GỐC ***
