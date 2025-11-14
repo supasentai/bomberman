@@ -98,8 +98,8 @@ Dự án này sử dụng `stack` để quản lý dependencies và build.
 1.  **Clone dự án:**
 
     ```bash
-    git clone <URL-repository-cua-ban>
-    cd <ten-du-an>
+    git clone https://github.com/supasentai/bomberman
+    cd bomberman
     ```
 
 2.  **Build dự án:**
