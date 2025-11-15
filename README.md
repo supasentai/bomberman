@@ -112,8 +112,7 @@ Dự án này sử dụng `stack` để quản lý dependencies và build.
     Mở một cửa sổ terminal và chạy:
 
     ```bash
-    stack exec <ten-executable-server>
-    # (Tên executable được định nghĩa trong file package.yaml)
+    stack run bomberman-server
     ```
 
     Bạn sẽ thấy thông báo: `🔥 Server started at port 4242`
@@ -122,7 +121,7 @@ Dự án này sử dụng `stack` để quản lý dependencies và build.
     Mở một (hoặc nhiều) cửa sổ terminal khác và chạy:
 
     ```bash
-    stack exec <ten-executable-client>
+    stack run bomberman-client
     ```
 
     Một cửa sổ game sẽ hiện lên, kết nối vào server.
@@ -143,9 +142,10 @@ Dự án này sử dụng `stack` để quản lý dependencies và build.
 ```
 .
 ├── assets/             # Chứa các tài nguyên ảnh .bmp (tường, bom, nhân vật...)
-├── src/
+├── app/
 │   ├── Server.hs         # Logic máy chủ chính, quản lý kết nối, STM, game loop.
-│   ├── NetworkedMain.hs  # Logic máy khách chính, khởi tạo Gloss, xử lý input.
+│   └── NetworkedMain.hs  # Logic máy khách chính, khởi tạo Gloss, xử lý input.
+├── src/
 │   ├── GameLogic.hs      # "Bộ não": Luật chơi, xử lý nổ, va chạm, AI, BFS.
 │   ├── Render.hs         # Các hàm "thuần túy" để vẽ mọi đối tượng trong game.
 │   └── Types.hs          # Định nghĩa tất cả cấu trúc dữ liệu (GameState, Player, v.v.)
